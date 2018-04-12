@@ -1,0 +1,15 @@
+[package]
+name = "ringbuf"
+version = "0.1.0"
+authors = ["Hyeonu Park <nemo1275@gmail.com>"]
+
+description = "Thread-safe lock free bound channel"
+homepage = "https://github.com/HyeonuPark/ringbuf"
+documentation = "https://docs.rs/ringbuf"
+repository = "https://github.com/HyeonuPark/ringbuf.git"
+keywords = []
+categories = []
+readme = "README.md"
+license = "MIT/Apache-2.0"
+
+[dependencies]
