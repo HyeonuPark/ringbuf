@@ -1,7 +1,7 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering::Relaxed};
 use std::ptr;
-use std::num::Wrapping;
+
+use counter::Counter;
 
 #[derive(Debug)]
 pub struct RingBuf<H, T> {
@@ -46,16 +46,16 @@ impl<H, T> RingBuf<H, T> {
         &self.inner.head
     }
 
-    pub unsafe fn get_ptr(&self, index: usize) -> *mut T {
+    pub unsafe fn get_ptr(&self, index: Counter) -> *mut T {
         let index = (index & self.mask) as isize;
         self.body_ptr.offset(index)
     }
 
-    pub unsafe fn set(&self, index: usize, value: T) {
+    pub unsafe fn set(&self, index: Counter, value: T) {
         ptr::write(self.get_ptr(index), value);
     }
 
-    pub unsafe fn take(&self, index: usize) -> T {
+    pub unsafe fn take(&self, index: Counter) -> T {
         ptr::read(self.get_ptr(index))
     }
 }
@@ -68,54 +68,4 @@ impl<H, T> Clone for RingBuf<H, T> {
             body_ptr: self.body_ptr,
         }
     }
-}
-
-#[derive(Debug)]
-pub struct Counter(AtomicUsize);
-
-impl Counter {
-    pub fn new() -> Self {
-        Counter(AtomicUsize::new(0))
-    }
-
-    pub fn get(&self) -> usize {
-        self.0.load(Relaxed)
-    }
-
-    pub fn incr(&self) -> usize {
-        self.0.fetch_add(1, Relaxed)
-    }
-}
-
-#[derive(Debug)]
-pub struct Flag(AtomicBool);
-
-impl Flag {
-    pub fn new(init: bool) -> Self {
-        Flag(AtomicBool::new(init))
-    }
-
-    pub fn get(&self) -> bool {
-        self.0.load(Relaxed)
-    }
-}
-
-const MSB: usize = !(::std::isize::MAX as usize);
-
-fn split_msb(num: Wrapping<usize>) -> (bool, usize) {
-    (
-        num.0 & MSB != 0,
-        num.0 & !MSB,
-    )
-}
-
-pub fn check_gte(left: Wrapping<usize>, right: Wrapping<usize>) -> (usize, usize) {
-    let (left_overflowed, mut left) = split_msb(left);
-    let (right_overflowed, right) = split_msb(right);
-
-    if left_overflowed ^ right_overflowed {
-        left += MSB;
-    }
-
-    (left, right)
 }

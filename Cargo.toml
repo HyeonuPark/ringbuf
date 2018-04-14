@@ -12,10 +12,5 @@ categories = ["asynchronous", "concurrency", "data-structures"]
 readme = "README.md"
 license = "MIT/Apache-2.0"
 
-[dependencies.futures]
-version = "0.2"
-optional = true
-
-[features]
-default = ["futures-compat"]
-futures-compat = ["futures"]
+[dependencies]
+futures = "0.2"
