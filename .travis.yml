@@ -11,6 +11,7 @@ rust:
 script:
   - cargo build --all
   - cargo test --all
+  - cargo test --all --release
 
 env:
   global:
