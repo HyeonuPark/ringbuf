@@ -4,7 +4,13 @@ RingBuf
 [![Build Status](https://travis-ci.org/HyeonuPark/Rubix.svg?branch=master)](https://travis-ci.org/HyeonuPark/ringbuf)
 [![codecov](https://codecov.io/gh/HyeonuPark/Rubix/branch/master/graph/badge.svg)](https://codecov.io/gh/HyeonuPark/ringbuf)
 
-Thread-safe bounded channel based on ring buffer.
+Thread safe bounded channels based on ring buffer.
+
+This crate provides channels that can be used to communicate
+between asynchronous tasks.
+
+Channels are based on fixed-sized ring buffer. Send operations simply fail
+if backing buffer is full, and you can get back message with error.
 
 ## License
 

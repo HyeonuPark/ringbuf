@@ -2,12 +2,18 @@
 use sequence::Sequence;
 use counter::{Counter, AtomicCounter};
 
+/// Shared sequence.
+///
+/// This side of the channel can be accessed by multiple owners, from multiple threads.
 #[derive(Debug, Default)]
 pub struct Shared {
     count: AtomicCounter,
     claimed: AtomicCounter,
 }
 
+/// Cache for shared sequence.
+///
+/// Each owner of shared sequence have their own cache.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Cache {
     limit: Counter,
@@ -27,7 +33,7 @@ impl Sequence for Shared {
         debug_assert!(cache.limit >= prev);
 
         if cache.limit == prev {
-            // try push limit
+            // try to push limit
             cache.limit = limit.count();
         }
 

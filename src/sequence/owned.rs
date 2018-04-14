@@ -1,12 +1,15 @@
-
 use sequence::Sequence;
 use counter::{Counter, AtomicCounter};
 
+/// Owned, unique sequence.
+///
+/// Owner of this sequence has exclusive access to this end of the channel.
 #[derive(Debug, Default)]
 pub struct Owned {
     count: AtomicCounter,
 }
 
+/// Cache for owned sequence.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Cache {
     count: Counter,
@@ -24,7 +27,7 @@ impl Sequence for Owned {
         debug_assert!(cache.limit >= cache.count);
 
         if cache.limit == cache.count {
-            // try push limit
+            // try to push limit
             cache.limit = limit.count();
         }
 
@@ -34,15 +37,14 @@ impl Sequence for Owned {
             // failed to push limit
             None
         } else {
-            let prev_count = self.count.incr(1);
-            debug_assert_eq!(prev_count, cache.count);
-            cache.count = prev_count + 1;
-
-            Some(prev_count)
+            Some(cache.count)
         }
     }
 
-    fn commit(&self, _cache: &mut Cache, _index: Counter) {
-        // no-op
+    fn commit(&self, cache: &mut Cache, index: Counter) {
+        let prev_count = self.count.incr(1);
+        debug_assert_eq!(prev_count, index);
+        debug_assert_eq!(prev_count, cache.count);
+        cache.count = prev_count + 1;
     }
 }

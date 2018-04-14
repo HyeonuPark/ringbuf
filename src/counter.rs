@@ -1,34 +1,46 @@
+//! Pointer-sized ever-increasing counters.
+//!
+//! This module provides types which represents incremental unbounded counters.
+//! As their ever-increasing semantics within fixed-pointer-sized representation,
+//! counters can only be meaningful when paired with other counters
+//! to calculate their relative offsets.
+//!
+//! These counters are basic building blocks of all other components.
 
 use std::sync::atomic::{AtomicUsize, Ordering as O};
 use std::isize;
 use std::cmp::{PartialOrd, Ordering};
 use std::ops;
 
-/// Pointer-sized incremental counter with overflow-handling
+/// Pointer-sized incremental counter with overflow handling.
 ///
-/// It's like Wrapping<usize> but uses its MSB as an overflow-detection field.
+/// It has identical memory layout as `usize`, but doesn't break its meaning when overflowed.
 ///
-/// `SignWrap` has special functionality with comparing.
-/// If only one of either operands have its MSB setted,
-/// it assumes that the left-hand-side operand is overflowed,
-/// so it works as LEFT > RIGHT.
+/// To archive this goal, `Counter` uses its MSB as an overflow-detection field.
+/// Initially all counters have their MSB as `0` and they are flipped when they overflow.
+/// So if it's known that this counter is greater than that one and their difference is
+/// less than `isize::MAX`, we can always calculate their offset safely regardless
+/// either or both ones are overflowed.
 ///
-/// This assumption will be false if two counter's difference exceeds `isize::MAX`.
-/// So one MUST make sure it will not happen when using this counter.
+/// Note that it's user's responsibility to keep these restrictions.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Counter(usize);
 
-/// Shared atomic counter
+/// Thread safe shared container for `Counter`.
+///
+/// Most operations use `Relaxed` ordering internally.
 #[derive(Debug, Default)]
 pub struct AtomicCounter(AtomicUsize);
 
 const MSB: usize = !(isize::MAX as usize);
 
 impl Counter {
+    /// Create a new counter from zero.
     pub fn new() -> Self {
         Counter(0)
     }
 
+    /// Split this counter to its overflow flag and internal representation.
     pub fn split(self) -> (bool, usize) {
         (
             self.0 & MSB != 0,
@@ -96,21 +108,28 @@ impl ops::BitOr<usize> for Counter {
 }
 
 impl AtomicCounter {
+    /// Create a new atomic counter from zero.
     pub fn new() -> Self {
         AtomicCounter(AtomicUsize::new(0))
     }
 
+    /// Retrieve inner counter.
     pub fn get(&self) -> Counter {
         Counter(self.0.load(O::Relaxed))
     }
 
+    /// Atomically increase inner counter by given amount. Returns previous one.
     pub fn incr(&self, amount: usize) -> Counter {
         Counter(self.0.fetch_add(amount, O::Relaxed))
     }
 
-    pub fn cond_swap(&self, cond: Counter, swap: Counter) -> Result<(), Counter> {
+    /// If its inner counter is same as `cond`, replace it with `value` and returns `Ok(())`.
+    /// If not, left itself unchanged and returns copy of inner counter as `Err`.
+    ///
+    /// This function uses `compare_and_swap` internally, with `SeqCst` ordering.
+    pub fn cond_swap(&self, cond: Counter, value: Counter) -> Result<(), Counter> {
         // QUESTION: is it possible to replace SeqCst with less restricted ordering?
-        let prev_usize = self.0.compare_and_swap(cond.0, swap.0, O::SeqCst);
+        let prev_usize = self.0.compare_and_swap(cond.0, value.0, O::SeqCst);
 
         if prev_usize == cond.0 {
             Ok(())

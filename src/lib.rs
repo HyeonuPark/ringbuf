@@ -1,4 +1,12 @@
+//! Thread safe bounded channels based on ring buffer.
+//!
+//! This crate provides channels that can be used to communicate
+//! between asynchronous tasks.
+//!
+//! Channels are based on fixed-sized ring buffer. Send operations simply fail
+//! if backing buffer is full, and you can get back message with error.
 
+#![deny(missing_docs)]
 
 pub mod counter;
 pub mod sequence;
@@ -6,6 +14,7 @@ pub mod ringbuf;
 pub mod channel;
 
 pub mod spsc {
+    #![allow(missing_docs)]
     use sequence::Owned;
     use channel as chan;
 
@@ -20,6 +29,7 @@ pub mod spsc {
 }
 
 pub mod mpsc {
+    #![allow(missing_docs)]
     use sequence::{Owned, Shared};
     use channel as chan;
 
@@ -34,6 +44,7 @@ pub mod mpsc {
 }
 
 pub mod spmc {
+    #![allow(missing_docs)]
     use sequence::{Owned, Shared};
     use channel as chan;
 
@@ -48,6 +59,7 @@ pub mod spmc {
 }
 
 pub mod mpmc {
+    #![allow(missing_docs)]
     use sequence::Shared;
     use channel as chan;
 
