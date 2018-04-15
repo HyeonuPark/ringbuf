@@ -20,7 +20,7 @@ impl Sequence for Owned {
     type Cache = Cache;
 
     fn count(&self) -> Counter {
-        self.count.get()
+        self.count.fetch()
     }
 
     fn claim<L: Sequence>(&self, cache: &mut Cache, limit: &L) -> Option<Counter> {

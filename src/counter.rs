@@ -113,22 +113,25 @@ impl AtomicCounter {
         AtomicCounter(AtomicUsize::new(0))
     }
 
-    /// Retrieve inner counter.
-    pub fn get(&self) -> Counter {
-        Counter(self.0.load(O::Relaxed))
+    /// Fetch counter to determine somebody changed it.
+    ///
+    /// It uses `Acquire` ordering.
+    pub fn fetch(&self) -> Counter {
+        Counter(self.0.load(O::Acquire))
     }
 
-    /// Atomically increase inner counter by given amount. Returns previous one.
+    /// Increase counter atomically and returns previous one.
+    ///
+    /// It uses `Release` ordering.
     pub fn incr(&self, amount: usize) -> Counter {
-        Counter(self.0.fetch_add(amount, O::Relaxed))
+        Counter(self.0.fetch_add(amount, O::Release))
     }
 
     /// If its inner counter is same as `cond`, replace it with `value` and returns `Ok(())`.
     /// If not, left itself unchanged and returns copy of inner counter as `Err`.
     ///
-    /// This function uses `compare_and_swap` internally, with `SeqCst` ordering.
+    /// It uses `SeqCst` ordering with `compare_and_swap`.
     pub fn cond_swap(&self, cond: Counter, value: Counter) -> Result<(), Counter> {
-        // QUESTION: is it possible to replace SeqCst with less restricted ordering?
         let prev_usize = self.0.compare_and_swap(cond.0, value.0, O::SeqCst);
 
         if prev_usize == cond.0 {

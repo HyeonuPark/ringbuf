@@ -13,7 +13,7 @@ pub struct Shared {
 
 /// Cache for shared sequence.
 ///
-/// Each owner of shared sequence have their own cache.
+/// Each owner of shared sequence has their own cache.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Cache {
     limit: Counter,
@@ -23,7 +23,7 @@ impl Sequence for Shared {
     type Cache = Cache;
 
     fn count(&self) -> Counter {
-        self.count.get()
+        self.count.fetch()
     }
 
     fn claim<L: Sequence>(&self, cache: &mut Cache, limit: &L) -> Option<Counter> {
@@ -66,11 +66,8 @@ impl Sequence for Shared {
         let prev = index;
         let next = index + 1;
 
-        loop {
-            match self.count.cond_swap(prev, next) {
-                Ok(()) => return,
-                Err(_) => {}
-            }
+        while self.count.cond_swap(prev, next).is_err() {
+            // spin
         }
     }
 }

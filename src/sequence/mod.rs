@@ -1,7 +1,7 @@
 //! Sequence abstracts either end of the channel.
 //!
-//! Sending and receiving end of bound channel have surprisingly similar behavior with each other.
-//! Sender owns occupied half of buffer, while receiver owns unoccupied half. And they blocks
+//! Sender and receiver end of bounded channel have surprisingly similar behavior with each other.
+//! Sender owns unoccupied half of buffer, while receiver owns occupied half. And they blocks
 //! each other when the buffer is completely full or empty.
 
 mod owned;
