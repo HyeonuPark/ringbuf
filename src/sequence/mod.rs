@@ -13,16 +13,22 @@ pub use self::shared::{Shared, Cache as SharedCache};
 use counter::Counter;
 
 /// Abstraction over either end of the channel.
-pub trait Sequence: Sized + Default {
+pub trait Sequence: Default + Sized {
     /// Sequence can own its state to cache shared atomic data, to improve performance.
-    type Cache: Default;
+    type Cache: Default + Clone;
 
     /// Count that blocks opposite end of the channel.
     fn count(&self) -> Counter;
 
     /// Claim a new slot from this side of the channel. Returns `None` if failed.
-    fn claim<L: Sequence>(&self, cache: &mut Self::Cache, limit: &L) -> Option<Counter>;
+    fn claim<L: Limit>(&self, cache: &mut Self::Cache, limit: L) -> Option<Counter>;
 
     /// Release claimed slot to the opposite end of the channel.
     fn commit(&self, cache: &mut Self::Cache, index: Counter);
+}
+
+/// View for the sequence at the opposite end.
+pub trait Limit {
+    /// Corresponds to `Sequence::count`.
+    fn count(&self) -> Counter;
 }

@@ -1,5 +1,5 @@
 
-use sequence::Sequence;
+use sequence::{Sequence, Limit};
 use counter::{Counter, AtomicCounter};
 
 /// Shared sequence.
@@ -26,13 +26,13 @@ impl Sequence for Shared {
         self.count.fetch()
     }
 
-    fn claim<L: Sequence>(&self, cache: &mut Cache, limit: &L) -> Option<Counter> {
+    fn claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
         let prev = self.claimed.incr(1);
         let next = prev + 1;
 
         debug_assert!(cache.limit >= prev);
 
-        if cache.limit == prev {
+        if cache.limit <= prev {
             // try to push limit
             cache.limit = limit.count();
         }

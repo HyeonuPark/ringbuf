@@ -1,4 +1,4 @@
-use sequence::Sequence;
+use sequence::{Sequence, Limit};
 use counter::{Counter, AtomicCounter};
 
 /// Owned, unique sequence.
@@ -23,17 +23,17 @@ impl Sequence for Owned {
         self.count.fetch()
     }
 
-    fn claim<L: Sequence>(&self, cache: &mut Cache, limit: &L) -> Option<Counter> {
+    fn claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
         debug_assert!(cache.limit >= cache.count);
 
-        if cache.limit == cache.count {
+        if cache.limit <= cache.count {
             // try to push limit
             cache.limit = limit.count();
         }
 
         debug_assert!(cache.limit >= cache.count);
 
-        if cache.limit == cache.count {
+        if cache.limit <= cache.count {
             // failed to push limit
             None
         } else {

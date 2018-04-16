@@ -50,6 +50,11 @@ impl Counter {
             self.0 & !MSB,
         )
     }
+
+    /// Flip its overflow flag.
+    pub fn flip(self) -> Self {
+        Counter(self.0 ^ MSB)
+    }
 }
 
 impl PartialOrd for Counter {

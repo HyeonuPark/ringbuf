@@ -8,67 +8,42 @@
 
 #![deny(missing_docs)]
 
+extern crate futures;
+
 pub mod counter;
 pub mod sequence;
 pub mod ringbuf;
 pub mod channel;
+pub mod extension;
 
-pub mod spsc {
-    #![allow(missing_docs)]
-    use sequence::Owned;
-    use channel as chan;
+macro_rules! specialize {
+    ($(
+        mod $name:ident<$S:ty, $R:ty, $E:ty>;
+    )*) => ($(
+        pub mod $name {
+            #![allow(missing_docs)]
+            #![allow(unused_imports)]
 
-    pub use channel::{SendError, SendErrorKind, ReceiveError};
-    pub type Sender<T> = chan::Sender<Owned, Owned, T>;
-    pub type Receiver<T> = chan::Receiver<Owned, Owned, T>;
+            use super::*;
+            use channel as chan;
 
-    #[inline]
-    pub fn channel<T: Send>(capacity: usize) -> (Sender<T>, Receiver<T>) {
-        chan::channel(capacity)
-    }
+            pub use channel::{SendError, SendErrorKind, ReceiveError};
+            pub type Sender<T> = chan::Sender<$S, $R, $E, T>;
+            pub type Receiver<T> = chan::Receiver<$S, $R, $E, T>;
+
+            #[inline]
+            pub fn channel<T: Send>(capacity: usize) -> (Sender<T>, Receiver<T>) {
+                chan::channel(capacity)
+            }
+        }
+    )*);
 }
 
-pub mod mpsc {
-    #![allow(missing_docs)]
-    use sequence::{Owned, Shared};
-    use channel as chan;
+use sequence::{Owned, Shared};
 
-    pub use channel::{SendError, SendErrorKind, ReceiveError};
-    pub type Sender<T> = chan::Sender<Shared, Owned, T>;
-    pub type Receiver<T> = chan::Receiver<Shared, Owned, T>;
-
-    #[inline]
-    pub fn channel<T: Send>(capacity: usize) -> (Sender<T>, Receiver<T>) {
-        chan::channel(capacity)
-    }
-}
-
-pub mod spmc {
-    #![allow(missing_docs)]
-    use sequence::{Owned, Shared};
-    use channel as chan;
-
-    pub use channel::{SendError, SendErrorKind, ReceiveError};
-    pub type Sender<T> = chan::Sender<Owned, Shared, T>;
-    pub type Receiver<T> = chan::Receiver<Owned, Shared, T>;
-
-    #[inline]
-    pub fn channel<T: Send>(capacity: usize) -> (Sender<T>, Receiver<T>) {
-        chan::channel(capacity)
-    }
-}
-
-pub mod mpmc {
-    #![allow(missing_docs)]
-    use sequence::Shared;
-    use channel as chan;
-
-    pub use channel::{SendError, SendErrorKind, ReceiveError};
-    pub type Sender<T> = chan::Sender<Shared, Shared, T>;
-    pub type Receiver<T> = chan::Receiver<Shared, Shared, T>;
-
-    #[inline]
-    pub fn channel<T: Send>(capacity: usize) -> (Sender<T>, Receiver<T>) {
-        chan::channel(capacity)
-    }
+specialize! {
+    mod spsc<Owned, Owned, ()>;
+    mod mpsc<Shared, Shared, ()>;
+    mod spmc<Owned, Shared, ()>;
+    mod mpmc<Shared, Shared, ()>;
 }

@@ -29,6 +29,9 @@ struct Inner<H, T> {
     body: Vec<T>,
 }
 
+unsafe impl<H: Send, T: Send> Send for RingBuf<H, T> {}
+unsafe impl<H: Sync, T: Send> Sync for RingBuf<H, T> {}
+
 impl<H, T> RingBuf<H, T> {
     /// # Panics
     ///
