@@ -126,8 +126,6 @@ impl<S: Sequence, R: Sequence, E: Extension, T: Send> Drop for Receiver<S, R, E,
             // This was the last receiver
             self.buf.head().is_closed.store(false, Ordering::Relaxed);
         }
-
-        self.buf.head().extension.cleanup_receiver(&mut self.extension);
     }
 }
 

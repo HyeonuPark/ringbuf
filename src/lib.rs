@@ -10,6 +10,9 @@
 
 extern crate futures;
 
+#[cfg(test)]
+extern crate rand;
+
 pub mod counter;
 pub mod sequence;
 pub mod ringbuf;

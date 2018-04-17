@@ -110,7 +110,6 @@ impl<S: Sequence, R: Sequence, E: Extension, T: Send> Drop for Sender<S, R, E, T
     fn drop(&mut self) {
         let head = self.buf.head();
         head.senders.fetch_sub(1, Ordering::Relaxed);
-        head.extension.cleanup_sender(&mut self.extension);
     }
 }
 

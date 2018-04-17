@@ -8,8 +8,6 @@ pub trait Extension: Sync + Sized {
     type Receiver;
 
     fn create_triple() -> (Self, Self::Sender, Self::Receiver);
-    fn cleanup_sender(&self, local: &mut Self::Sender);
-    fn cleanup_receiver(&self, local: &mut Self::Receiver);
 }
 
 impl Extension for () {
@@ -19,6 +17,4 @@ impl Extension for () {
     fn create_triple() -> (Self, Self::Sender, Self::Receiver) {
         ((), (), ())
     }
-    fn cleanup_sender(&self, _local: &mut ()) {}
-    fn cleanup_receiver(&self, _local: &mut ()) {}
 }

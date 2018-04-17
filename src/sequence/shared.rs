@@ -30,14 +30,10 @@ impl Sequence for Shared {
         let prev = self.claimed.incr(1);
         let next = prev + 1;
 
-        debug_assert!(cache.limit >= prev);
-
         if cache.limit <= prev {
             // try to push limit
             cache.limit = limit.count();
         }
-
-        debug_assert!(cache.limit >= prev);
 
         if cache.limit >= next {
             // claim succeeded
@@ -52,7 +48,7 @@ impl Sequence for Shared {
                         debug_assert!(other_claimed > next);
 
                         cache.limit = limit.count();
-                        if cache.limit > prev {
+                        if cache.limit >= next {
                             // condition changed and now claim succeeded
                             return Some(prev);
                         }
