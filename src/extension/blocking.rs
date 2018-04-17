@@ -2,7 +2,7 @@ use std::thread::{self, Thread};
 use std::sync::{Mutex, mpsc};
 
 use sequence::Sequence;
-use channel::{Sender, Receiver};
+use queue::{Sender, Receiver};
 use extension::Extension;
 
 #[derive(Debug)]
@@ -41,7 +41,9 @@ impl Blocking {
                     handle.unpark();
                 }
             }
-            Err(TE::Poisoned(_)) => panic!("Found poisoned mutex while draining senders"),
+            Err(TE::Poisoned(_)) => {
+                panic!("Found poisoned mutex while draining senders")
+            }
             Err(TE::WouldBlock) => {}
         }
     }
@@ -55,7 +57,9 @@ impl Blocking {
                     handle.unpark();
                 }
             }
-            Err(TE::Poisoned(_)) => panic!("Found poisoned mutex while draining receivers"),
+            Err(TE::Poisoned(_)) => {
+                panic!("Found poisoned mutex while draining receivers")
+            }
             Err(TE::WouldBlock) => {}
         }
     }
@@ -94,7 +98,7 @@ impl Extension for Blocking {
 
 impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, Blocking, T> {
     pub fn send(&mut self, msg: T) -> Result<(), T> {
-        use channel::SendErrorKind as K;
+        use queue::SendErrorKind as K;
 
         let mut msg = msg;
 
@@ -139,7 +143,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
     use sequence::{Owned};
-    use channel::channel;
+    use queue::channel;
 
     #[test]
     fn test_blocking_spsc() {

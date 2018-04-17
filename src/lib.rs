@@ -13,7 +13,7 @@ extern crate futures;
 pub mod counter;
 pub mod sequence;
 pub mod ringbuf;
-pub mod channel;
+pub mod queue;
 pub mod extension;
 
 macro_rules! specialize {
@@ -25,9 +25,9 @@ macro_rules! specialize {
             #![allow(unused_imports)]
 
             use super::*;
-            use channel as chan;
+            use queue as chan;
 
-            pub use channel::{SendError, SendErrorKind, ReceiveError};
+            pub use queue::{SendError, SendErrorKind, ReceiveError};
             pub type Sender<T> = chan::Sender<$S, $R, $E, T>;
             pub type Receiver<T> = chan::Receiver<$S, $R, $E, T>;
 

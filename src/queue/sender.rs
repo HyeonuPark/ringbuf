@@ -7,15 +7,15 @@ use extension::Extension;
 
 use super::Head;
 
-/// The transmission end of the channel.
+/// The transmission end of the queue.
 ///
-/// This value is created by the [`channel`](channel) function.
+/// This value is created by the [`queue`](queue) function.
 #[derive(Debug)]
 pub struct Sender<S: Sequence, R: Sequence, E: Extension, T: Send> {
     buf: RingBuf<Head<S, R, E>, T>,
     capacity: usize,
     cache: S::Cache,
-    ext: E::Sender,
+    extension: E::Sender,
 }
 
 /// Error that emitted when sending failed.
@@ -48,12 +48,14 @@ impl<'a, S: Sequence> Limit for UnusedLimit<'a, S> {
 }
 
 impl<S: Sequence, R: Sequence, E: Extension, T: Send> Sender<S, R, E, T> {
-    pub(super) fn new(buf: RingBuf<Head<S, R, E>, T>, cache: S::Cache, ext: E::Sender) -> Self {
+    pub(super) fn new(
+        buf: RingBuf<Head<S, R, E>, T>, cache: S::Cache, extension: E::Sender
+    ) -> Self {
         Sender {
             capacity: buf.capacity(),
             buf,
             cache,
-            ext,
+            extension,
         }
     }
 
@@ -90,25 +92,25 @@ impl<S: Sequence, R: Sequence, E: Extension, T: Send> Sender<S, R, E, T> {
 
     /// Expose local part of extension
     pub fn ext(&self) -> &E::Sender {
-        &self.ext
+        &self.extension
     }
 
     /// Expose local part of extension mutably
     pub fn ext_mut(&mut self) -> &mut E::Sender {
-        &mut self.ext
+        &mut self.extension
     }
 
     /// Expose shared part of extension
     pub fn ext_head(&self) -> &E {
-        &self.buf.head().ext
+        &self.buf.head().extension
     }
 }
 
 impl<S: Sequence, R: Sequence, E: Extension, T: Send> Drop for Sender<S, R, E, T> {
     fn drop(&mut self) {
         let head = self.buf.head();
-        head.sender_count.fetch_sub(1, Ordering::Relaxed);
-        head.ext.cleanup_sender(&mut self.ext);
+        head.senders.fetch_sub(1, Ordering::Relaxed);
+        head.extension.cleanup_sender(&mut self.extension);
     }
 }
 
@@ -119,13 +121,13 @@ impl<R, E, T> Clone for Sender<Shared, R, E, T> where
     T: Send,
 {
     fn clone(&self) -> Self {
-        self.buf.head().sender_count.fetch_add(1, Ordering::Relaxed);
+        self.buf.head().senders.fetch_add(1, Ordering::Relaxed);
 
         Sender {
             buf: self.buf.clone(),
             capacity: self.capacity,
             cache: self.cache.clone(),
-            ext: self.ext.clone(),
+            extension: self.extension.clone(),
         }
     }
 }

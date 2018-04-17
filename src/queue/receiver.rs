@@ -8,15 +8,15 @@ use extension::Extension;
 
 use super::Head;
 
-/// The receiving end of the channel.
+/// The receiving end of the queue.
 ///
-/// This value is created by the [`channel`](channel) function.
+/// This value is created by the [`queue`](queue) function.
 #[derive(Debug)]
 pub struct Receiver<S: Sequence, R: Sequence, E: Extension, T: Send> {
     buf: RingBuf<Head<S, R, E>, T>,
     capacity: usize,
     cache: R::Cache,
-    ext: E::Receiver,
+    extension: E::Receiver,
     is_closed_cache: Cell<bool>,
 }
 
@@ -37,12 +37,14 @@ impl<'a, S: Sequence> Limit for SentLimit<'a, S> {
 }
 
 impl<S: Sequence, R: Sequence, E: Extension, T: Send> Receiver<S, R, E, T> {
-    pub(super) fn new(buf: RingBuf<Head<S, R, E>, T>, cache: R::Cache, ext: E::Receiver) -> Self {
+    pub(super) fn new(
+        buf: RingBuf<Head<S, R, E>, T>, cache: R::Cache, extension: E::Receiver
+    ) -> Self {
         Receiver {
             capacity: buf.capacity(),
             buf,
             cache,
-            ext,
+            extension,
             is_closed_cache: false.into(),
         }
     }
@@ -90,7 +92,7 @@ impl<S: Sequence, R: Sequence, E: Extension, T: Send> Receiver<S, R, E, T> {
 
         let head = self.buf.head();
         let is_closed = head.is_closed.load(Ordering::Relaxed) ||
-                head.sender_count.load(Ordering::Relaxed) == 0;
+                head.senders.load(Ordering::Relaxed) == 0;
 
         if is_closed {
             self.is_closed_cache.set(true);
@@ -102,30 +104,30 @@ impl<S: Sequence, R: Sequence, E: Extension, T: Send> Receiver<S, R, E, T> {
 
     /// Expose local part of extension
     pub fn ext(&self) -> &E::Receiver {
-        &self.ext
+        &self.extension
     }
 
     /// Expose local part of extension mutably
     pub fn ext_mut(&mut self) -> &mut E::Receiver {
-        &mut self.ext
+        &mut self.extension
     }
 
     /// Expose shared part of extension
     pub fn ext_head(&self) -> &E {
-        &self.buf.head().ext
+        &self.buf.head().extension
     }
 }
 
 impl<S: Sequence, R: Sequence, E: Extension, T: Send> Drop for Receiver<S, R, E, T> {
     fn drop(&mut self) {
-        let remain_count = self.buf.head().receiver_count.fetch_sub(1, Ordering::Relaxed);
+        let remain_count = self.buf.head().receivers.fetch_sub(1, Ordering::Relaxed);
 
         if remain_count == 1 {
             // This was the last receiver
             self.buf.head().is_closed.store(false, Ordering::Relaxed);
         }
 
-        self.buf.head().ext.cleanup_receiver(&mut self.ext);
+        self.buf.head().extension.cleanup_receiver(&mut self.extension);
     }
 }
 
@@ -136,13 +138,13 @@ impl<S, E, T> Clone for Receiver<S, Shared, E, T> where
     T: Send,
 {
     fn clone(&self) -> Self {
-        self.buf.head().receiver_count.fetch_add(1, Ordering::Relaxed);
+        self.buf.head().receivers.fetch_add(1, Ordering::Relaxed);
 
         Receiver {
             buf: self.buf.clone(),
             capacity: self.capacity,
             cache: self.cache.clone(),
-            ext: self.ext.clone(),
+            extension: self.extension.clone(),
             is_closed_cache: self.is_closed().into(),
         }
     }
