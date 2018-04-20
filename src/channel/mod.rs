@@ -5,7 +5,6 @@
 use std::sync::atomic::{AtomicUsize, AtomicBool};
 use ringbuf::RingBuf;
 use sequence::Sequence;
-use extension::Extension;
 
 mod sender;
 mod receiver;
@@ -14,7 +13,7 @@ pub use self::sender::{Sender, SendError, SendErrorKind};
 pub use self::receiver::{Receiver, ReceiveError};
 
 #[derive(Debug)]
-struct Head<S: Sequence, R: Sequence, E: Extension> {
+struct Head<S: Sequence, R: Sequence, E: Default> {
     sender: S,
     receiver: R,
     is_closed: AtomicBool,
@@ -29,11 +28,10 @@ pub fn channel<S, R, E, T>(
 ) -> (Sender<S, R, E, T>, Receiver<S, R, E, T>) where
     S: Sequence,
     R: Sequence,
-    E: Extension,
+    E: Default,
     T: Send,
 {
-    let (sender, receiver, sender_cache, receiver_cache) = Default::default();
-    let (extension, ext_sender, ext_receiver) = E::create_triple();
+    let (sender, receiver, sender_cache, receiver_cache, extension) = Default::default();
 
     let head = Head {
         sender,
@@ -47,7 +45,7 @@ pub fn channel<S, R, E, T>(
     let buf = RingBuf::new(head, capacity);
 
     (
-        Sender::new(buf.clone(), sender_cache, ext_sender),
-        Receiver::new(buf, receiver_cache, ext_receiver),
+        Sender::new(buf.clone(), sender_cache),
+        Receiver::new(buf, receiver_cache),
     )
 }

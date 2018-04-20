@@ -72,13 +72,13 @@ impl<H, T> RingBuf<H, T> {
         self.body_ptr.offset(index)
     }
 
-    /// Set buffer's slot with given value.
-    pub unsafe fn set(&self, index: Counter, value: T) {
+    /// Write given value to buffer's slot.
+    pub unsafe fn write(&self, index: Counter, value: T) {
         ptr::write(self.get_ptr(index), value);
     }
 
-    /// Read out value from buffer's slot.
-    pub unsafe fn take(&self, index: Counter) -> T {
+    /// Read value from buffer's slot.
+    pub unsafe fn read(&self, index: Counter) -> T {
         ptr::read(self.get_ptr(index))
     }
 }

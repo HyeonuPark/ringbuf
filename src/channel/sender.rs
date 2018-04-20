@@ -1,9 +1,9 @@
 use std::sync::atomic::Ordering;
+use std::cell::Cell;
 
 use sequence::{Sequence, Limit, Shared};
 use counter::Counter;
 use ringbuf::RingBuf;
-use extension::Extension;
 
 use super::Head;
 
@@ -11,11 +11,11 @@ use super::Head;
 ///
 /// This value is created by the [`queue`](queue) function.
 #[derive(Debug)]
-pub struct Sender<S: Sequence, R: Sequence, E: Extension, T: Send> {
+pub struct Sender<S: Sequence, R: Sequence, E: Default, T: Send> {
     buf: RingBuf<Head<S, R, E>, T>,
     capacity: usize,
     cache: S::Cache,
-    extension: E::Sender,
+    is_closed_cache: Cell<bool>,
 }
 
 /// Error that emitted when sending failed.
@@ -47,15 +47,15 @@ impl<'a, S: Sequence> Limit for UnusedLimit<'a, S> {
     }
 }
 
-impl<S: Sequence, R: Sequence, E: Extension, T: Send> Sender<S, R, E, T> {
+impl<S: Sequence, R: Sequence, E: Default, T: Send> Sender<S, R, E, T> {
     pub(super) fn new(
-        buf: RingBuf<Head<S, R, E>, T>, cache: S::Cache, extension: E::Sender
+        buf: RingBuf<Head<S, R, E>, T>, cache: S::Cache
     ) -> Self {
         Sender {
             capacity: buf.capacity(),
             buf,
             cache,
-            extension,
+            is_closed_cache: false.into(),
         }
     }
 
@@ -64,16 +64,34 @@ impl<S: Sequence, R: Sequence, E: Extension, T: Send> Sender<S, R, E, T> {
         self.capacity
     }
 
-    /// Tries to send a message if possible.
-    pub fn try_send(&mut self, msg: T) -> Result<(), SendError<T>> {
-        let head = self.buf.head();
+    /// Check if this channel is closed.
+    pub fn is_closed(&self) -> bool {
+        if self.is_closed_cache.get() {
+            return true;
+        }
 
-        if head.is_closed.load(Ordering::Relaxed) {
+        let head = self.buf.head();
+        let is_closed = head.is_closed.load(Ordering::Acquire) ||
+            head.receivers.load(Ordering::Acquire) == 0;
+
+        if is_closed {
+            self.is_closed_cache.set(true);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Try to send a message if possible.
+    pub fn try_send(&mut self, msg: T) -> Result<(), SendError<T>> {
+        if self.is_closed() {
             return Err(SendError {
                 kind: SendErrorKind::ReceiverAllClosed,
                 payload: msg,
             });
         }
+
+        let head = self.buf.head();
 
         match head.sender.claim(&mut self.cache, UnusedLimit(self.capacity, &head.receiver)) {
             None => Err(SendError {
@@ -82,7 +100,7 @@ impl<S: Sequence, R: Sequence, E: Extension, T: Send> Sender<S, R, E, T> {
             }),
             Some(index) => {
                 unsafe {
-                    self.buf.set(index, msg);
+                    self.buf.write(index, msg);
                 }
                 head.sender.commit(&mut self.cache, index);
                 Ok(())
@@ -90,33 +108,22 @@ impl<S: Sequence, R: Sequence, E: Extension, T: Send> Sender<S, R, E, T> {
         }
     }
 
-    /// Expose local part of extension
-    pub fn ext(&self) -> &E::Sender {
-        &self.extension
-    }
-
-    /// Expose local part of extension mutably
-    pub fn ext_mut(&mut self) -> &mut E::Sender {
-        &mut self.extension
-    }
-
-    /// Expose shared part of extension
-    pub fn ext_head(&self) -> &E {
+    /// Expose extension part
+    pub fn ext(&self) -> &E {
         &self.buf.head().extension
     }
 }
 
-impl<S: Sequence, R: Sequence, E: Extension, T: Send> Drop for Sender<S, R, E, T> {
+impl<S, R, E, T> Drop for Sender<S, R, E, T> where S: Sequence, R: Sequence, E: Default, T: Send {
     fn drop(&mut self) {
         let head = self.buf.head();
-        head.senders.fetch_sub(1, Ordering::Relaxed);
+        head.senders.fetch_sub(1, Ordering::Release);
     }
 }
 
 impl<R, E, T> Clone for Sender<Shared, R, E, T> where
     R: Sequence,
-    E: Extension,
-    E::Sender: Clone,
+    E: Default,
     T: Send,
 {
     fn clone(&self) -> Self {
@@ -125,8 +132,8 @@ impl<R, E, T> Clone for Sender<Shared, R, E, T> where
         Sender {
             buf: self.buf.clone(),
             capacity: self.capacity,
-            cache: self.cache.clone(),
-            extension: self.extension.clone(),
+            cache: self.cache,
+            is_closed_cache: self.is_closed().into(),
         }
     }
 }
