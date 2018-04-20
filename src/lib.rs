@@ -4,10 +4,11 @@
 //! between asynchronous tasks.
 //!
 //! Channels are based on fixed-sized ring buffer. Send operations simply fail
-//! if backing buffer is full, and you can get back message with error.
+//! if backing buffer is full, and you can get back message you sent from error.
 
 #![deny(missing_docs)]
 
+extern crate crossbeam;
 extern crate futures;
 
 #[cfg(test)]
@@ -17,7 +18,6 @@ pub mod counter;
 pub mod sequence;
 pub mod ringbuf;
 pub mod channel;
-// pub mod extension;
 
 macro_rules! specialize {
     ($(
@@ -34,7 +34,6 @@ macro_rules! specialize {
             pub type Sender<T> = chan::Sender<$S, $R, $E, T>;
             pub type Receiver<T> = chan::Receiver<$S, $R, $E, T>;
 
-            #[inline]
             pub fn channel<T: Send>(capacity: usize) -> (Sender<T>, Receiver<T>) {
                 chan::channel(capacity)
             }
@@ -46,7 +45,7 @@ use sequence::{Owned, Shared};
 
 specialize! {
     mod spsc<Owned, Owned, ()>;
-    mod mpsc<Shared, Shared, ()>;
+    mod mpsc<Shared, Owned, ()>;
     mod spmc<Owned, Shared, ()>;
     mod mpmc<Shared, Shared, ()>;
 }
