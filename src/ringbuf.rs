@@ -30,8 +30,13 @@ struct Inner<H, T> {
     body: Vec<T>,
 }
 
+/// `Head` should track occupied position of its buffer
+/// to properly drop unsent messages.
 pub trait BufInfo {
+    /// Inclusive start position of this buffer.
     fn start(&self) -> Counter;
+
+    /// Exclusive end position of this buffer.
     fn end(&self) -> Counter;
 }
 

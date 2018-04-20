@@ -66,8 +66,7 @@ impl<S: Sequence, R: Sequence, E: Default, T: Send> Receiver<S, R, E, T> {
         }
 
         let head = self.buf.head();
-        let is_closed = head.is_closed.load(Ordering::Acquire) ||
-                head.senders.load(Ordering::Acquire) == 0;
+        let is_closed = head.is_closed.load(Ordering::Acquire);
 
         if is_closed {
             self.is_closed_cache.set(true);
@@ -107,11 +106,12 @@ impl<S: Sequence, R: Sequence, E: Default, T: Send> Receiver<S, R, E, T> {
 
 impl<S: Sequence, R: Sequence, E: Default, T: Send> Drop for Receiver<S, R, E, T> {
     fn drop(&mut self) {
-        let remain_count = self.buf.head().receivers.fetch_sub(1, Ordering::Release);
+        let head = self.buf.head();
+        let remain_count = head.receivers_count.fetch_sub(1, Ordering::Release);
 
         if remain_count == 1 {
             // This was the last receiver
-            self.buf.head().is_closed.store(true, Ordering::Release);
+            head.is_closed.store(true, Ordering::Release);
         }
     }
 }
@@ -122,7 +122,7 @@ impl<S, E, T> Clone for Receiver<S, Shared, E, T> where
     T: Send,
 {
     fn clone(&self) -> Self {
-        self.buf.head().receivers.fetch_add(1, Ordering::Relaxed);
+        self.buf.head().receivers_count.fetch_add(1, Ordering::Relaxed);
 
         Receiver {
             buf: self.buf.clone(),

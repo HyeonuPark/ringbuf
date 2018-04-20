@@ -18,8 +18,8 @@ struct Head<S: Sequence, R: Sequence, E: Default> {
     sender: S,
     receiver: R,
     is_closed: AtomicBool,
-    senders: AtomicUsize,
-    receivers: AtomicUsize,
+    senders_count: AtomicUsize,
+    receivers_count: AtomicUsize,
     extension: E,
 }
 
@@ -48,8 +48,8 @@ pub fn channel<S, R, E, T>(
         sender,
         receiver,
         is_closed: AtomicBool::new(false),
-        senders: AtomicUsize::new(1),
-        receivers: AtomicUsize::new(1),
+        senders_count: AtomicUsize::new(1),
+        receivers_count: AtomicUsize::new(1),
         extension,
     };
 
@@ -59,4 +59,41 @@ pub fn channel<S, R, E, T>(
         Sender::new(buf.clone(), sender_cache),
         Receiver::new(buf, receiver_cache),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+    use sequence::Owned;
+
+    #[test]
+    fn test_spining_spsc() {
+        const COUNT: u32 = 16000;
+        let (mut tx, mut rx) = channel::<Owned, Owned, (), u32>(16);
+
+        let tx = thread::spawn(move|| {
+            for i in 0..COUNT {
+                loop {
+                    if let Ok(()) = tx.try_send(i) {
+                        break;
+                    }
+                }
+            }
+        });
+
+        let rx = thread::spawn(move|| {
+            for i in 0..COUNT {
+                loop {
+                    if let Ok(recv) = rx.try_recv() {
+                        assert_eq!(i, recv.unwrap());
+                        break;
+                    }
+                }
+            }
+        });
+
+        tx.join().expect("Sender thread panicked");
+        rx.join().expect("Receiver thread panicked");
+    }
 }
