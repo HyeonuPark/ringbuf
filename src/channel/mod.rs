@@ -2,7 +2,6 @@
 //! using [`RingBuf`](../ringbuf/struct.RingBuf.html)
 //! and [`Sequence`](../sequence/trait.Sequence.html).
 
-use std::sync::atomic::{AtomicUsize, AtomicBool};
 use ringbuf::{RingBuf, BufInfo};
 use sequence::Sequence;
 use counter::Counter;
@@ -10,16 +9,13 @@ use counter::Counter;
 mod sender;
 mod receiver;
 
-pub use self::sender::{Sender, SendError, SendErrorKind};
-pub use self::receiver::{Receiver, ReceiveError};
+pub use self::sender::{Sender, SendError};
+pub use self::receiver::Receiver;
 
 #[derive(Debug)]
 struct Head<S: Sequence, R: Sequence, E: Default> {
     sender: S,
     receiver: R,
-    is_closed: AtomicBool,
-    senders_count: AtomicUsize,
-    receivers_count: AtomicUsize,
     extension: E,
 }
 
@@ -47,9 +43,6 @@ pub fn channel<S, R, E, T>(
     let head = Head {
         sender,
         receiver,
-        is_closed: AtomicBool::new(false),
-        senders_count: AtomicUsize::new(1),
-        receivers_count: AtomicUsize::new(1),
         extension,
     };
 
@@ -86,8 +79,8 @@ mod tests {
         let rx = thread::spawn(move|| {
             for i in 0..COUNT {
                 loop {
-                    if let Ok(recv) = rx.try_recv() {
-                        assert_eq!(i, recv.unwrap());
+                    if let Some(recv) = rx.try_recv() {
+                        assert_eq!(i, recv);
                         break;
                     }
                 }
@@ -131,9 +124,9 @@ mod tests {
 
                 for _i in 0..COUNT {
                     loop {
-                        if let Ok(v) = rx.try_recv() {
+                        if let Some(v) = rx.try_recv() {
                             // println!("recv: {} - {}", _n, _i);
-                            acc += v.unwrap() as u64;
+                            acc += v as u64;
                             break;
                         }
                     }
@@ -154,6 +147,6 @@ mod tests {
             .sum();
 
         assert_eq!(tx_acc, rx_acc);
-        assert_eq!(rx.try_recv().unwrap(), None);
+        assert_eq!(rx.try_recv(), None);
     }
 }

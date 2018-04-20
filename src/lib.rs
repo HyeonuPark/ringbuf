@@ -30,7 +30,7 @@ macro_rules! specialize {
             use super::*;
             use channel as chan;
 
-            pub use channel::{SendError, SendErrorKind, ReceiveError};
+            pub use channel::SendError;
             pub type Sender<T> = chan::Sender<$S, $R, $E, T>;
             pub type Receiver<T> = chan::Receiver<$S, $R, $E, T>;
 

@@ -1,6 +1,3 @@
-use std::sync::atomic::Ordering;
-use std::cell::Cell;
-
 use sequence::{Sequence, Limit, Shared};
 use counter::Counter;
 use ringbuf::RingBuf;
@@ -15,28 +12,11 @@ pub struct Sender<S: Sequence, R: Sequence, E: Default, T: Send> {
     buf: RingBuf<Head<S, R, E>, T>,
     capacity: usize,
     cache: S::Cache,
-    is_closed_cache: Cell<bool>,
 }
 
 /// Error that emitted when sending failed.
 #[derive(Debug)]
-pub struct SendError<T: Send> {
-    /// Reason why it failed.
-    pub kind: SendErrorKind,
-
-    /// Message attempted to be sent.
-    pub payload: T,
-}
-
-/// Indicates why sending failed.
-#[derive(Debug, Clone, Copy)]
-pub enum SendErrorKind {
-    /// Backing buffer is full.
-    BufferFull,
-
-    /// Every receivers are dropped, messages will be lost if sent.
-    ReceiverAllClosed,
-}
+pub struct SendError<T: Send>(pub T);
 
 #[derive(Debug)]
 struct UnusedLimit<'a, S: Sequence + 'a>(usize, &'a S);
@@ -55,7 +35,6 @@ impl<S: Sequence, R: Sequence, E: Default, T: Send> Sender<S, R, E, T> {
             capacity: buf.capacity(),
             buf,
             cache,
-            is_closed_cache: false.into(),
         }
     }
 
@@ -64,39 +43,12 @@ impl<S: Sequence, R: Sequence, E: Default, T: Send> Sender<S, R, E, T> {
         self.capacity
     }
 
-    /// Check if this channel is closed.
-    pub fn is_closed(&self) -> bool {
-        if self.is_closed_cache.get() {
-            return true;
-        }
-
-        let head = self.buf.head();
-        let is_closed = head.is_closed.load(Ordering::Acquire);
-
-        if is_closed {
-            self.is_closed_cache.set(true);
-            true
-        } else {
-            false
-        }
-    }
-
     /// Try to send a message if possible.
     pub fn try_send(&mut self, msg: T) -> Result<(), SendError<T>> {
-        if self.is_closed() {
-            return Err(SendError {
-                kind: SendErrorKind::ReceiverAllClosed,
-                payload: msg,
-            });
-        }
-
         let head = self.buf.head();
 
         match head.sender.claim(&mut self.cache, UnusedLimit(self.capacity, &head.receiver)) {
-            None => Err(SendError {
-                kind: SendErrorKind::BufferFull,
-                payload: msg,
-            }),
+            None => Err(SendError(msg)),
             Some(index) => {
                 unsafe {
                     self.buf.write(index, msg);
@@ -113,31 +65,16 @@ impl<S: Sequence, R: Sequence, E: Default, T: Send> Sender<S, R, E, T> {
     }
 }
 
-impl<S, R, E, T> Drop for Sender<S, R, E, T> where S: Sequence, R: Sequence, E: Default, T: Send {
-    fn drop(&mut self) {
-        let head = self.buf.head();
-        let remain_count = head.senders_count.fetch_sub(1, Ordering::Release);
-
-        if remain_count == 1 {
-            // This was the last sender
-            head.is_closed.store(true, Ordering::Release);
-        }
-    }
-}
-
 impl<R, E, T> Clone for Sender<Shared, R, E, T> where
     R: Sequence,
     E: Default,
     T: Send,
 {
     fn clone(&self) -> Self {
-        self.buf.head().senders_count.fetch_add(1, Ordering::Relaxed);
-
         Sender {
             buf: self.buf.clone(),
             capacity: self.capacity,
             cache: self.cache,
-            is_closed_cache: self.is_closed().into(),
         }
     }
 }
