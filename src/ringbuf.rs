@@ -12,12 +12,13 @@
 
 use std::sync::Arc;
 use std::ptr;
+use std::ops::Drop;
 
 use counter::Counter;
 
-/// Circular ring buffer structure.
+/// Shared circular ring buffer structure.
 #[derive(Debug)]
-pub struct RingBuf<H, T> {
+pub struct RingBuf<H: BufInfo, T: Send> {
     mask: usize,
     inner: Arc<Inner<H, T>>,
     body_ptr: *mut T,
@@ -29,10 +30,15 @@ struct Inner<H, T> {
     body: Vec<T>,
 }
 
-unsafe impl<H: Send, T: Send> Send for RingBuf<H, T> {}
-unsafe impl<H: Sync, T: Send> Sync for RingBuf<H, T> {}
+pub trait BufInfo {
+    fn start(&self) -> Counter;
+    fn end(&self) -> Counter;
+}
 
-impl<H, T> RingBuf<H, T> {
+unsafe impl<H: BufInfo + Send, T: Send> Send for RingBuf<H, T> {}
+unsafe impl<H: BufInfo + Sync, T: Send> Sync for RingBuf<H, T> {}
+
+impl<H: BufInfo, T: Send> RingBuf<H, T> {
     /// # Panics
     ///
     /// It panics if capacity is not a power of 2, or its MSB is setted.
@@ -83,12 +89,26 @@ impl<H, T> RingBuf<H, T> {
     }
 }
 
-impl<H, T> Clone for RingBuf<H, T> {
+impl<H: BufInfo, T: Send> Clone for RingBuf<H, T> {
     fn clone(&self) -> Self {
         RingBuf {
             mask: self.mask,
             inner: self.inner.clone(),
             body_ptr: self.body_ptr,
+        }
+    }
+}
+
+impl<H: BufInfo, T: Send> Drop for RingBuf<H, T> {
+    fn drop(&mut self) {
+        let mut start = self.head().start();
+        let end = self.head().end();
+
+        while end > start {
+            unsafe {
+                self.read(start);
+            }
+            start += 1;
         }
     }
 }

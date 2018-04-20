@@ -3,8 +3,9 @@
 //! and [`Sequence`](../sequence/trait.Sequence.html).
 
 use std::sync::atomic::{AtomicUsize, AtomicBool};
-use ringbuf::RingBuf;
+use ringbuf::{RingBuf, BufInfo};
 use sequence::Sequence;
+use counter::Counter;
 
 mod sender;
 mod receiver;
@@ -20,6 +21,16 @@ struct Head<S: Sequence, R: Sequence, E: Default> {
     senders: AtomicUsize,
     receivers: AtomicUsize,
     extension: E,
+}
+
+impl<S: Sequence, R: Sequence, E: Default> BufInfo for Head<S, R, E> {
+    fn start(&self) -> Counter {
+        self.receiver.count()
+    }
+
+    fn end(&self) -> Counter {
+        self.sender.count()
+    }
 }
 
 /// Creates a bounded channel for communicating between asynchronous tasks.
