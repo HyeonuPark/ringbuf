@@ -17,6 +17,7 @@ extern crate rand;
 pub mod counter;
 pub mod sequence;
 pub mod ringbuf;
+pub mod blocker;
 pub mod channel;
 
 macro_rules! specialize {
