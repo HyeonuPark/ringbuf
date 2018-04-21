@@ -31,14 +31,13 @@ impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, Blocker, T> {
 
         loop {
             let res = self.try_send(msg);
-            let ext = self.ext();
 
             let (mut next_cond, mut next_target) = (BlockReceiver, WakeReceiver);
             loop {
-                match (next_cond, ext.state.transit(next_cond, next_target)) {
+                match (next_cond, self.ext().state.transit(next_cond, next_target)) {
                     (_, Locked) => {}
                     (BlockReceiver, BlockReceiver) => {
-                        while let Some(blocked) = ext.receivers.try_pop() {
+                        while let Some(blocked) = self.ext().receivers.try_pop() {
                             blocked.unpark();
                         }
 
@@ -82,15 +81,29 @@ impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, Blocker, T> {
 
                     let mut next_cond = Neutral;
                     loop {
-                        match (next_cond, ext.state.transit(next_cond, Locked)) {
+                        match (next_cond, self.ext().state.transit(next_cond, Locked)) {
                             (_, Locked) => {}
                             (_, BlockReceiver) |
                             (_, WakeReceiver) => break,
 
-                            (Neutral, Neutral) |
+                            (Neutral, Neutral) => {
+                                match self.try_send(msg) {
+                                    Ok(()) => {
+                                        let locked = self.ext().state.transit(Locked, Neutral);
+                                        debug_assert_eq!(locked, Locked);
+                                        return;
+                                    }
+                                    Err(SendError(msg_back)) => {
+                                        msg = msg_back;
+                                        push_current(self.ext());
+                                        break;
+                                    }
+                                }
+                            }
+
                             (BlockSender, BlockSender) |
                             (WakeSender, WakeSender) => {
-                                push_current(ext);
+                                push_current(self.ext());
                                 break;
                             }
 
@@ -118,14 +131,13 @@ impl<S: Sequence, R: Sequence, T: Send> Receiver<S, R, Blocker, T> {
     pub fn recv(&mut self) -> T {
         loop {
             let res = self.try_recv();
-            let ext = self.ext();
 
             let (mut next_cond, mut next_target) = (BlockSender, WakeSender);
             loop {
-                match (next_cond, ext.state.transit(next_cond, next_target)) {
+                match (next_cond, self.ext().state.transit(next_cond, next_target)) {
                     (_, Locked) => {}
                     (BlockSender, BlockSender) => {
-                        while let Some(blocked) = ext.senders.try_pop() {
+                        while let Some(blocked) = self.ext().senders.try_pop() {
                             blocked.unpark();
                         }
 
@@ -167,15 +179,28 @@ impl<S: Sequence, R: Sequence, T: Send> Receiver<S, R, Blocker, T> {
                 None => {
                     let mut next_cond = Neutral;
                     loop {
-                        match (next_cond, ext.state.transit(next_cond, Locked)) {
+                        match (next_cond, self.ext().state.transit(next_cond, Locked)) {
                             (_, Locked) => {}
                             (_, BlockSender) |
                             (_, WakeSender) => break,
 
-                            (Neutral, Neutral) |
+                            (Neutral, Neutral) => {
+                                match self.try_recv() {
+                                    Some(msg) => {
+                                        let locked = self.ext().state.transit(Locked, Neutral);
+                                        debug_assert_eq!(locked, Locked);
+                                        return msg;
+                                    }
+                                    None => {
+                                        push_current(self.ext());
+                                        break;
+                                    }
+                                }
+                            }
+
                             (BlockReceiver, BlockReceiver) |
                             (WakeReceiver, WakeReceiver) => {
-                                push_current(ext);
+                                push_current(self.ext());
                                 break;
                             }
 
