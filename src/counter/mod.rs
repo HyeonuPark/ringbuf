@@ -8,7 +8,6 @@
 //! These counters are basic building blocks of all other components.
 
 use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT, Ordering as O};
-use std::isize;
 use std::cmp::{PartialOrd, Ordering};
 use std::ops;
 
@@ -35,7 +34,7 @@ pub struct AtomicCounter(AtomicUsize);
 /// Constant initializer for AtomicCounter
 pub const ATOMIC_COUNTER_INIT: AtomicCounter = AtomicCounter(ATOMIC_USIZE_INIT);
 
-const MSB: usize = !(isize::MAX as usize);
+const MSB: usize = !(!0 >> 1);
 
 impl Counter {
     /// Create a new counter from zero.

@@ -52,9 +52,8 @@ impl<H: BufInfo, T: Send> RingBuf<H, T> {
     ///
     /// It panics if capacity is not a power of 2, or its MSB is setted.
     pub fn new(head: H, capacity: usize) -> Self {
-        use std::isize;
         assert!(capacity.is_power_of_two(), "Capacity MUST be a power of 2");
-        assert!(capacity & !(isize::MAX as usize) == 0, "capacity MUST NOT have its MSB setted");
+        assert!(capacity << 1 != 0, "capacity MUST NOT have its MSB setted");
 
         let mut body = Vec::with_capacity(capacity);
         let body_ptr = body.as_mut_ptr();

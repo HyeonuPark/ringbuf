@@ -1,7 +1,5 @@
 use super::*;
 
-use std::{isize, usize};
-
 #[test]
 fn test_counter_split() {
     let zero = Counter::new();
@@ -10,7 +8,7 @@ fn test_counter_split() {
     assert_eq!((zero + 1).split(), (false, 1));
     assert_eq!((zero + MSB).split(), (true, 0));
     assert_eq!((zero + !MSB).split(), (false, !MSB));
-    assert_eq!((zero + usize::MAX).split(), (true, !MSB));
+    assert_eq!((zero + !0).split(), (true, !MSB));
 }
 
 #[test]
@@ -33,17 +31,17 @@ fn test_compare_counters() {
 
 #[test]
 fn test_compare_overflowed_counters() {
-    let imax = isize::MAX as usize;
+    const MAX: usize = (!0) >> 1;
 
     let zero1 = Counter::new();
-    let imax1 = zero1 + imax;
+    let imax1 = zero1 + MAX;
     let zero2 = imax1 + 1;
-    let imax2 = zero2 + imax;
+    let imax2 = zero2 + MAX;
 
     assert_eq!(zero1.split(), (false, 0));
-    assert_eq!(imax1.split(), (false, imax));
+    assert_eq!(imax1.split(), (false, MAX));
     assert_eq!(zero2.split(), (true, 0));
-    assert_eq!(imax2.split(), (true, imax));
+    assert_eq!(imax2.split(), (true, MAX));
 
     assert_eq!(zero1, zero1);
     assert_eq!(imax1, imax1);
