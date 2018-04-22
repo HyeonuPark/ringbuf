@@ -13,13 +13,12 @@ pub use self::sender::{Sender, SendError};
 pub use self::receiver::Receiver;
 
 #[derive(Debug)]
-struct Head<S: Sequence, R: Sequence, E: Default> {
+struct Head<S: Sequence, R: Sequence> {
     sender: S,
     receiver: R,
-    extension: E,
 }
 
-impl<S: Sequence, R: Sequence, E: Default> BufInfo for Head<S, R, E> {
+impl<S: Sequence, R: Sequence> BufInfo for Head<S, R> {
     fn start(&self) -> Counter {
         self.receiver.count()
     }
@@ -30,20 +29,18 @@ impl<S: Sequence, R: Sequence, E: Default> BufInfo for Head<S, R, E> {
 }
 
 /// Creates a bounded channel for communicating between asynchronous tasks.
-pub fn channel<S, R, E, T>(
+pub fn channel<S, R, T>(
     capacity: usize
-) -> (Sender<S, R, E, T>, Receiver<S, R, E, T>) where
+) -> (Sender<S, R, T>, Receiver<S, R, T>) where
     S: Sequence,
     R: Sequence,
-    E: Default,
     T: Send,
 {
-    let (sender, receiver, sender_cache, receiver_cache, extension) = Default::default();
+    let (sender, receiver, sender_cache, receiver_cache) = Default::default();
 
     let head = Head {
         sender,
         receiver,
-        extension,
     };
 
     let buf = RingBuf::new(head, capacity);
@@ -64,7 +61,7 @@ mod tests {
     #[test]
     fn test_spining_spsc() {
         const COUNT: u32 = 64000;
-        let (mut tx, mut rx) = channel::<Owned, Owned, (), u32>(16);
+        let (mut tx, mut rx) = channel::<Owned, Owned, u32>(16);
 
         let tx = thread::spawn(move|| {
             for i in 0..COUNT {
@@ -94,7 +91,7 @@ mod tests {
     #[test]
     fn test_spninning_mpmc() {
         const COUNT: u32 = 2000;
-        let (tx, mut rx) = channel::<Shared, Shared, (), u32>(64);
+        let (tx, mut rx) = channel::<Shared, Shared, u32>(64);
 
         let tx_handles: Vec<_> = (0..4).map(|_n| {
             let mut tx = tx.clone();

@@ -8,8 +8,8 @@ use super::Head;
 ///
 /// This value is created by the [`queue`](queue) function.
 #[derive(Debug)]
-pub struct Sender<S: Sequence, R: Sequence, E: Default, T: Send> {
-    buf: RingBuf<Head<S, R, E>, T>,
+pub struct Sender<S: Sequence, R: Sequence, T: Send> {
+    buf: RingBuf<Head<S, R>, T>,
     capacity: usize,
     cache: S::Cache,
 }
@@ -27,9 +27,9 @@ impl<'a, S: Sequence> Limit for UnusedLimit<'a, S> {
     }
 }
 
-impl<S: Sequence, R: Sequence, E: Default, T: Send> Sender<S, R, E, T> {
+impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, T> {
     pub(super) fn new(
-        buf: RingBuf<Head<S, R, E>, T>, cache: S::Cache
+        buf: RingBuf<Head<S, R>, T>, cache: S::Cache
     ) -> Self {
         Sender {
             capacity: buf.capacity(),
@@ -58,16 +58,10 @@ impl<S: Sequence, R: Sequence, E: Default, T: Send> Sender<S, R, E, T> {
             }
         }
     }
-
-    /// Expose extension part
-    pub fn ext(&self) -> &E {
-        &self.buf.head().extension
-    }
 }
 
-impl<R, E, T> Clone for Sender<Shared, R, E, T> where
+impl<R, T> Clone for Sender<Shared, R, T> where
     R: Sequence,
-    E: Default,
     T: Send,
 {
     fn clone(&self) -> Self {
