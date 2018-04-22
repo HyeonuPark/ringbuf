@@ -9,7 +9,7 @@ use sequence::{Owned, Shared};
 #[test]
 fn test_spining_spsc() {
     const COUNT: u32 = 64000;
-    let (mut tx, mut rx) = channel::<Owned, Owned, u32>(16);
+    let (mut tx, mut rx) = bounded::queue::<Owned, Owned, u32>(16);
 
     let tx = thread::spawn(move|| {
         for i in 0..COUNT {
@@ -39,7 +39,7 @@ fn test_spining_spsc() {
 #[test]
 fn test_spninning_mpmc() {
     const COUNT: u32 = 2000;
-    let (tx, mut rx) = channel::<Shared, Shared, u32>(64);
+    let (tx, mut rx) = bounded::queue::<Shared, Shared, u32>(64);
 
     let tx_handles: Vec<_> = (0..4).map(|_n| {
         let mut tx = tx.clone();
