@@ -30,6 +30,10 @@ struct Inner<H, T> {
     body: Vec<T>,
 }
 
+/// Marker type for `RingBuf::into_raw`
+#[derive(Debug)]
+pub enum RawRingBuf {}
+
 /// `Head` should track occupied position of its buffer
 /// to properly drop unsent messages.
 pub trait BufInfo {
@@ -70,6 +74,24 @@ impl<H: BufInfo, T: Send> RingBuf<H, T> {
     /// Size of this buffer.
     pub fn capacity(&self) -> usize {
         self.mask + 1
+    }
+
+    /// Convert to raw pointer.
+    pub fn into_raw(self) -> *mut RawRingBuf {
+        Arc::into_raw(self.inner.clone()) as *mut RawRingBuf
+    }
+
+    /// Convert from raw pointer.
+    pub unsafe fn from_raw(buf_ptr: *mut RawRingBuf) -> Self {
+        let inner = Arc::from_raw(buf_ptr as *mut Inner<H, T>);
+        let mask = inner.body.capacity() - 1;
+        let body_ptr = inner.body.as_ptr() as *mut T;
+
+        RingBuf {
+            mask,
+            inner,
+            body_ptr,
+        }
     }
 
     /// Access buffer's head.
