@@ -10,15 +10,20 @@ mod shared;
 pub use self::owned::{Owned, Cache as OwnedCache};
 pub use self::shared::{Shared, Cache as SharedCache};
 
+use std::fmt::Debug;
+
 use counter::Counter;
 
 /// Abstraction over either end of the channel.
 pub trait Sequence: Default + Sized {
     /// Sequence can own its state to cache shared atomic data, to improve performance.
-    type Cache: Default + Clone;
+    type Cache: Clone + Debug;
 
     /// Count that blocks opposite end of the channel.
     fn count(&self) -> Counter;
+
+    /// Create local cache from sequence and limit.
+    fn cache<L: Limit>(&self, limit: L) -> Self::Cache;
 
     /// Claim a new slot from this side of the channel. Returns `None` if failed.
     fn claim<L: Limit>(&self, cache: &mut Self::Cache, limit: L) -> Option<Counter>;

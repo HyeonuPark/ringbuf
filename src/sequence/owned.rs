@@ -23,6 +23,13 @@ impl Sequence for Owned {
         self.count.fetch()
     }
 
+    fn cache<L: Limit>(&self, limit: L) -> Cache {
+        Cache {
+            count: self.count(),
+            limit: limit.count(),
+        }
+    }
+
     fn claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
         debug_assert!(cache.limit >= cache.count);
 

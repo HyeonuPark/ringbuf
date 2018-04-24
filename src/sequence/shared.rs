@@ -26,6 +26,12 @@ impl Sequence for Shared {
         self.count.fetch()
     }
 
+    fn cache<L: Limit>(&self, limit: L) -> Cache {
+        Cache {
+            limit: limit.count(),
+        }
+    }
+
     fn claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
         let prev = self.claimed.incr(1);
         let next = prev + 1;

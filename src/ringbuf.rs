@@ -13,6 +13,8 @@
 use std::sync::Arc;
 use std::ptr;
 use std::ops::Drop;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::cell::Cell;
 
 use counter::Counter;
 
@@ -22,17 +24,15 @@ pub struct RingBuf<H: BufInfo, T: Send> {
     mask: usize,
     inner: Arc<Inner<H, T>>,
     body_ptr: *mut T,
+    is_closed: Cell<bool>,
 }
 
 #[derive(Debug)]
 struct Inner<H, T> {
     head: H,
     body: Vec<T>,
+    is_closed: AtomicBool,
 }
-
-/// Marker type for `RingBuf::into_raw`
-#[derive(Debug)]
-pub enum RawRingBuf {}
 
 /// `Head` should track occupied position of its buffer
 /// to properly drop unsent messages.
@@ -61,12 +61,14 @@ impl<H: BufInfo, T: Send> RingBuf<H, T> {
         let inner = Arc::new(Inner {
             head,
             body,
+            is_closed: false.into(),
         });
 
         RingBuf {
             mask: capacity - 1,
             inner,
             body_ptr,
+            is_closed: false.into(),
         }
     }
 
@@ -75,21 +77,25 @@ impl<H: BufInfo, T: Send> RingBuf<H, T> {
         self.mask + 1
     }
 
-    /// Convert to raw pointer.
-    pub fn into_raw(self) -> *mut RawRingBuf {
-        Arc::into_raw(self.inner.clone()) as *mut RawRingBuf
+    /// Check if this buffer is closed.
+    pub fn is_closed(&self) -> bool {
+        if self.is_closed.get() {
+            return true;
+        }
+
+        if self.inner.is_closed.load(Ordering::Acquire) {
+            self.is_closed.set(true);
+            true
+        } else {
+            false
+        }
     }
 
-    /// Convert from raw pointer.
-    pub unsafe fn from_raw(buf_ptr: *mut RawRingBuf) -> Self {
-        let inner = Arc::from_raw(buf_ptr as *mut Inner<H, T>);
-        let mask = inner.body.capacity() - 1;
-        let body_ptr = inner.body.as_ptr() as *mut T;
-
-        RingBuf {
-            mask,
-            inner,
-            body_ptr,
+    /// Close this buffer.
+    pub fn close(&self) {
+        if !self.is_closed.get() {
+            self.is_closed.set(true);
+            self.inner.is_closed.store(true, Ordering::Release);
         }
     }
 
@@ -121,6 +127,7 @@ impl<H: BufInfo, T: Send> Clone for RingBuf<H, T> {
             mask: self.mask,
             inner: self.inner.clone(),
             body_ptr: self.body_ptr,
+            is_closed: self.is_closed.clone(),
         }
     }
 }

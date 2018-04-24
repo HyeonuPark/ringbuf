@@ -15,6 +15,7 @@ license = "MIT/Apache-2.0"
 [dependencies]
 crossbeam = "0.3"
 futures = "0.2"
+defmac = "0.1"
 
 [dev-dependencies]
 rand = "0.4"

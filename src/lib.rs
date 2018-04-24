@@ -8,8 +8,12 @@
 
 #![deny(missing_docs)]
 
+#[macro_use]
+extern crate defmac;
+
 extern crate crossbeam;
-extern crate futures;
+// not for now
+// extern crate futures;
 
 #[cfg(test)]
 extern crate rand;
