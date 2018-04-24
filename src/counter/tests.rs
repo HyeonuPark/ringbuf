@@ -87,3 +87,33 @@ fn test_multithread_counter_incr() {
 
     assert_eq!(counter.fetch(), Counter::new() + 64000);
 }
+
+#[test]
+fn test_overflowed_counter_incr() {
+    use std::sync::Arc;
+    use std::thread;
+    use std::mem::transmute;
+
+    const LARGE: usize = ::std::usize::MAX - 8000;
+
+    let counter: Arc<AtomicCounter> = Arc::new(unsafe { transmute(LARGE) });
+    let counter_init: Counter = unsafe { transmute(LARGE) };
+
+    let handles: Vec<_> = (0..8).map(|_| {
+        let counter = counter.clone();
+
+        thread::spawn(move|| {
+            for _ in 0..8000 {
+                counter.incr(1);
+            }
+        })
+    }).collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let counter_end = counter.fetch();
+    assert_eq!(counter_end, counter_init + 64000);
+    assert!(counter_end > counter_init);
+}

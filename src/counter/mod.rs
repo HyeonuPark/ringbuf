@@ -16,7 +16,7 @@ use std::ops;
 /// It has identical memory layout as `usize`, but doesn't break its meaning when overflowed.
 ///
 /// To archive this goal, `Counter` uses its MSB as an overflow-detection field.
-/// Initially all counters have their MSB as `0` and they are flipped when they overflow.
+/// Initially all counters have their MSB as `0` and it will be flipped when they overflow.
 /// So if it's known that this counter is greater than that one and their difference is
 /// less than `isize::MAX`, we can always calculate their offset safely regardless
 /// either or both ones are overflowed.
@@ -139,6 +139,8 @@ impl AtomicCounter {
     ///
     /// It uses `SeqCst` ordering with `compare_and_swap`.
     pub fn cond_swap(&self, cond: Counter, value: Counter) -> Result<(), Counter> {
+        debug_assert!(value > cond, "Counter should be increase-only");
+
         let prev_usize = self.0.compare_and_swap(cond.0, value.0, O::SeqCst);
 
         if prev_usize == cond.0 {
