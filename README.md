@@ -1,8 +1,8 @@
 RingBuf
 =====
 
-[![Build Status](https://travis-ci.org/HyeonuPark/Rubix.svg?branch=master)](https://travis-ci.org/HyeonuPark/ringbuf)
-[![codecov](https://codecov.io/gh/HyeonuPark/Rubix/branch/master/graph/badge.svg)](https://codecov.io/gh/HyeonuPark/ringbuf)
+[![Build Status](https://travis-ci.org/HyeonuPark/ringbuf.svg?branch=master)](https://travis-ci.org/HyeonuPark/ringbuf)
+[![codecov](https://codecov.io/gh/HyeonuPark/ringbuf/branch/master/graph/badge.svg)](https://codecov.io/gh/HyeonuPark/ringbuf)
 
 Thread safe bounded channels based on ring buffer.
 
