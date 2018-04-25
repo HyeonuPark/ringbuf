@@ -20,13 +20,13 @@ impl Sequence for Shared {
         self.count.fetch()
     }
 
-    fn cache<L: Limit>(&self, limit: L) -> Cache {
+    fn cache<'a, L: Limit<'a>>(&self, limit: L) -> Cache {
         Cache {
             limit: limit.count(),
         }
     }
 
-    fn try_claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
+    fn try_claim<'a, L: Limit<'a>>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
         let mut prev = self.claimed.fetch();
 
         loop {
@@ -50,7 +50,7 @@ impl Sequence for Shared {
         }
     }
 
-    fn claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Result<Counter, Counter> {
+    fn claim<'a, L: Limit<'a>>(&self, cache: &mut Cache, limit: L) -> Result<Counter, Counter> {
         let count = self.claimed.incr(1);
 
         if cache.limit <= count {

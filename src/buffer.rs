@@ -2,17 +2,16 @@
 use std::sync::Arc;
 use std::ptr;
 use std::ops::Drop;
+use std::fmt;
 
 use counter::Counter;
 
-#[derive(Debug)]
 pub struct Buffer<H: BufInfo, T: Send> {
     inner: Arc<Inner<H, T>>,
     ptr: *mut T,
     mask: usize,
 }
 
-#[derive(Debug)]
 struct Inner<H: BufInfo, T: Send> {
     head: H,
     body: Vec<T>,
@@ -58,6 +57,10 @@ impl<H: BufInfo, T: Send> Buffer<H, T> {
         self.ptr.offset(index)
     }
 
+    pub unsafe fn get(&self, index: Counter) -> &T {
+        &*self.get_ptr(index)
+    }
+
     pub unsafe fn read(&self, index: Counter) -> T {
         ptr::read(self.get_ptr(index))
     }
@@ -89,5 +92,11 @@ impl<H: BufInfo, T: Send> Drop for Inner<H, T> {
             }
             index += 1;
         }
+    }
+}
+
+impl<H: BufInfo, T: Send> fmt::Debug for Buffer<H, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ringbuf::Buffer")
     }
 }

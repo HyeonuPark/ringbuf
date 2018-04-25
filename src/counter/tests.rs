@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn test_counter_split() {
-    let zero = Counter::new();
+    let zero = Counter::new(0);
 
     assert_eq!(zero.split(), (false, 0));
     assert_eq!((zero + 1).split(), (false, 1));
@@ -13,7 +13,7 @@ fn test_counter_split() {
 
 #[test]
 fn test_compare_counters() {
-    let zero = Counter::new();
+    let zero = Counter::new(0);
 
     assert_eq!(zero, zero);
     assert!(zero <= zero);
@@ -33,7 +33,7 @@ fn test_compare_counters() {
 fn test_compare_overflowed_counters() {
     const MAX: usize = (!0) >> 1;
 
-    let zero1 = Counter::new();
+    let zero1 = Counter::new(0);
     let imax1 = zero1 + MAX;
     let zero2 = imax1 + 1;
     let imax2 = zero2 + MAX;
@@ -85,7 +85,7 @@ fn test_multithread_counter_incr() {
         handle.join().unwrap();
     }
 
-    assert_eq!(counter.fetch(), Counter::new() + 64000);
+    assert_eq!(counter.fetch(), Counter::new(64000));
 }
 
 #[test]

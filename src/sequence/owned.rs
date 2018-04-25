@@ -20,14 +20,14 @@ impl Sequence for Owned {
         self.count.fetch()
     }
 
-    fn cache<L: Limit>(&self, limit: L) -> Cache {
+    fn cache<'a, L: Limit<'a>>(&self, limit: L) -> Cache {
         Cache {
             count: self.count(),
             limit: limit.count(),
         }
     }
 
-    fn try_claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
+    fn try_claim<'a, L: Limit<'a>>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
         debug_assert!(cache.limit >= cache.count);
 
         if cache.limit == cache.count {
@@ -43,7 +43,7 @@ impl Sequence for Owned {
         }
     }
 
-    fn claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Result<Counter, Counter> {
+    fn claim<'a, L: Limit<'a>>(&self, cache: &mut Cache, limit: L) -> Result<Counter, Counter> {
         debug_assert!(cache.limit >= cache.count);
 
         if cache.limit == cache.count {

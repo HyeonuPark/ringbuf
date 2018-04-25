@@ -37,9 +37,9 @@ pub const ATOMIC_COUNTER_INIT: AtomicCounter = AtomicCounter(ATOMIC_USIZE_INIT);
 const MSB: usize = !(!0 >> 1);
 
 impl Counter {
-    /// Create a new counter from zero.
-    pub fn new() -> Self {
-        Counter(0)
+    /// Create a new counter.
+    pub fn new(num: usize) -> Self {
+        Counter(num)
     }
 
     /// Split this counter to its overflow flag and internal representation.
