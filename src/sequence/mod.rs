@@ -3,7 +3,7 @@ use std::ops::Index;
 use std::cell::Cell;
 use std::sync::Arc;
 
-// pub mod owned;
+pub mod owned;
 
 use counter::Counter;
 use blocker::{Blocker, BlockerStack};
@@ -13,21 +13,20 @@ pub struct Bucket<T> {
     inner: Cell<Option<T>>,
 }
 
-pub struct Slot<'a, 'b, 'c, S> where S: Sequence + 'a, S::Cache: 'b, S::Item: 'c {
+pub struct Slot<'a, 'b, 'c, S, T> where S: Sequence + 'a, S::Cache: 'b, T: 'c {
     seq: &'a S,
     cache: &'b mut S::Cache,
-    bucket: &'c Bucket<S::Item>,
+    bucket: &'c Bucket<T>,
     count: Counter,
 }
 
-pub struct TrySlot<'a, 'b, 'c, S, L> where S: Sequence + 'a, S::Cache: 'b, S::Item: 'c, L: Limit {
-    slot: Slot<'a, 'b, 'c, S>,
+pub struct TrySlot<'a, 'b, 'c, S, T, L> where S: Sequence + 'a, S::Cache: 'b, T: 'c, L: Limit {
+    slot: Slot<'a, 'b, 'c, S, T>,
     limit: L,
 }
 
 pub trait Sequence: Sized {
     type Cache;
-    type Item;
 
     fn and_cache() -> (Self, Self::Cache);
 
@@ -39,14 +38,15 @@ pub trait Sequence: Sized {
 
     fn commit(&self, cache: &mut Self::Cache, count: Counter);
 
-    fn try_advance<'a, 'b, 'c, L, B>(
+    fn try_advance<'a, 'b, 'c, L, B, T>(
         &'a self,
         cache: &'b mut Self::Cache,
         limit: L,
         buf: &'c B,
-    ) -> Option<Slot<'a, 'b, 'c, Self>> where
+    ) -> Option<Slot<'a, 'b, 'c, Self, T>> where
         L: Limit,
-        B: Index<Counter, Output=Bucket<Self::Item>>,
+        B: Index<Counter, Output=Bucket<T>>,
+        T: Send,
     {
         match self.try_claim(cache, limit) {
             None => None,
@@ -59,15 +59,16 @@ pub trait Sequence: Sized {
         }
     }
 
-    fn advance<'a, 'b, 'c, L, B>(
+    fn advance<'a, 'b, 'c, L, B, T>(
         &'a self,
         cache: &'b mut Self::Cache,
         limit: L,
         buf: &'c B,
         blocker: &Arc<Blocker>,
-    ) -> Result<Slot<'a, 'b, 'c, Self>, TrySlot<'a, 'b, 'c, Self, L>> where
+    ) -> Result<Slot<'a, 'b, 'c, Self, T>, TrySlot<'a, 'b, 'c, Self, T, L>> where
         L: Limit,
-        B: Index<Counter, Output=Bucket<Self::Item>>,
+        B: Index<Counter, Output=Bucket<T>>,
+        T: Send,
     {
         match self.claim(cache, limit.clone()) {
             Ok(count) => Ok(Slot {
@@ -122,27 +123,27 @@ impl<T> Bucket<T> {
     }
 }
 
-impl<'a, 'b, 'c, S> Slot<'a, 'b, 'c, S> where S: Sequence {
-    pub fn get(self) -> S::Item {
+impl<'a, 'b, 'c, S, T> Slot<'a, 'b, 'c, S, T> where S: Sequence {
+    pub fn get(self) -> T {
         let res = self.bucket.get();
         self.seq.commit(self.cache, self.count);
         self.bucket.notify();
         res
     }
 
-    pub fn set(self, item: S::Item) {
+    pub fn set(self, item: T) {
         self.bucket.set(item);
         self.seq.commit(self.cache, self.count);
         self.bucket.notify();
     }
 }
 
-impl<'a, 'b, 'c, S, L> TrySlot<'a, 'b, 'c, S, L> where S: Sequence, L: Limit {
+impl<'a, 'b, 'c, S, T, L> TrySlot<'a, 'b, 'c, S, T, L> where S: Sequence, L: Limit {
     fn check(&self) -> bool {
         self.limit.count() > self.slot.count
     }
 
-    pub fn try_get(self) -> Result<S::Item, Self> {
+    pub fn try_get(self) -> Result<T, Self> {
         if self.check() {
             Ok(self.slot.get())
         } else {
@@ -150,7 +151,7 @@ impl<'a, 'b, 'c, S, L> TrySlot<'a, 'b, 'c, S, L> where S: Sequence, L: Limit {
         }
     }
 
-    pub fn try_set(self, item: S::Item) -> Result<(), (Self, S::Item)> {
+    pub fn try_set(self, item: T) -> Result<(), (Self, T)> {
         if self.check() {
             Ok(self.slot.set(item))
         } else {
