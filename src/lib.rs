@@ -10,4 +10,3 @@ pub mod counter;
 pub mod blocker;
 pub mod buffer;
 pub mod sequence;
-pub mod queue;
