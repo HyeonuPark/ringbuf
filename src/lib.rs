@@ -7,6 +7,7 @@
 //! if backing buffer is full, and you can get back message you sent from error.
 
 pub mod counter;
+pub mod blocker;
 pub mod buffer;
 pub mod sequence;
 pub mod queue;
