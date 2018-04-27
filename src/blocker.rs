@@ -2,14 +2,13 @@
 use std::thread::Thread;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::ptr::{self, NonNull};
-use std::cell::Cell;
+use std::ptr;
 
 use counter::{Counter, AtomicCounter};
 
 #[derive(Default)]
 pub struct Blocker {
-    kind: Cell<Option<BlockKind>>,
+    kind: Option<BlockKind>,
     stamp: AtomicCounter,
     next: AtomicPtr<Blocker>,
 }
@@ -32,8 +31,12 @@ impl Blocker {
         Arc::new(Blocker::default())
     }
 
+    pub fn block(&mut self, kind: BlockKind) {
+        self.kind = Some(kind);
+    }
+
     pub fn unblock(&self) {
-        match self.kind.take().expect("Calling Blocker::unblock on non-blocked case") {
+        match self.kind.as_ref().expect("Calling Blocker::unblock on non-blocked case") {
             BlockKind::Sync(ref thread) => {
                 thread.unpark();
             }
@@ -48,14 +51,15 @@ impl BlockerStack {
         }
     }
 
-    pub fn push(&self, next: &mut Blocker) {
+    pub fn push(&self, next: Arc<Blocker>) {
         next.stamp.incr(1); // To avoid ABA problem
 
+        let next = Arc::into_raw(next) as *mut Blocker;
         let mut prev = self.head.load(Ordering::Relaxed);
         let mut prev_stamp = fetch_stamp(prev);
 
         loop {
-            next.next = AtomicPtr::new(prev);
+            unsafe { &*next }.next.store(prev, Ordering::Relaxed);
 
             let swap = self.head.compare_and_swap(prev, next, Ordering::Relaxed);
             let swap_stamp = fetch_stamp(swap);
@@ -69,25 +73,23 @@ impl BlockerStack {
         }
     }
 
-    pub fn pop(&self) -> Option<NonNull<Blocker>> {
+    pub fn pop(&self) -> Option<Arc<Blocker>> {
         loop {
-            let prev_ptr = self.head.load(Ordering::Relaxed);
+            let prev = self.head.load(Ordering::Relaxed);
 
-            match NonNull::new(prev_ptr) {
-                None => return None,
-                Some(prev) => {
-                    let prev_stamp = fetch_stamp(prev_ptr);
+            if prev.is_null() {
+                return None;
+            }
 
-                    let next = unsafe { &prev.as_ref().next };
-                    let next = next.load(Ordering::Relaxed);
+            let prev_stamp = fetch_stamp(prev);
+            let next = unsafe { &*prev }.next.load(Ordering::Relaxed);
 
-                    let swap = self.head.compare_and_swap(prev_ptr, next, Ordering::Relaxed);
-                    let swap_stamp = fetch_stamp(swap);
+            let swap = self.head.compare_and_swap(prev, next, Ordering::Acquire);
+            let swap_stamp = fetch_stamp(swap);
 
-                    if ptr::eq(prev_ptr, swap) && prev_stamp == swap_stamp {
-                        return Some(prev);
-                    }
-                }
+            if ptr::eq(prev, swap) && prev_stamp == swap_stamp {
+                let prev = unsafe { Arc::from_raw(prev) };
+                return Some(prev);
             }
         }
     }

@@ -64,7 +64,7 @@ pub trait Sequence: Sized {
         cache: &'b mut Self::Cache,
         limit: L,
         buf: &'c B,
-        blocker: &mut Blocker,
+        blocker: &Arc<Blocker>,
     ) -> Result<Slot<'a, 'b, 'c, Self>, TrySlot<'a, 'b, 'c, Self, L>> where
         L: Limit,
         B: Index<Counter, Output=Bucket<Self::Item>>,
@@ -78,7 +78,7 @@ pub trait Sequence: Sized {
             }),
             Err(count) => {
                 let bucket = &buf[count];
-                bucket.blockers.push(blocker);
+                bucket.blockers.push(blocker.clone());
 
                 Err(TrySlot {
                     limit,
@@ -117,7 +117,6 @@ impl<T> Bucket<T> {
 
     pub fn notify(&self) {
         if let Some(blocker) = self.blockers.pop() {
-            let blocker = unsafe { Arc::from_raw(blocker.as_ptr()) };
             blocker.unblock();
         }
     }
