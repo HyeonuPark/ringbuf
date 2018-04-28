@@ -22,7 +22,7 @@ impl<T> Sequence for Owned<T> {
     type Item = T;
     type Cache = Cache;
 
-    fn and_cache() -> (Self, Cache) {
+    fn new() -> (Self, Cache) {
         (
             Owned {
                 _marker: PhantomData,
@@ -39,7 +39,7 @@ impl<T> Sequence for Owned<T> {
         self.count.fetch()
     }
 
-    fn try_claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
+    fn try_claim<L: Limit>(&self, cache: &mut Cache, limit: &L) -> Option<Counter> {
         debug_assert!(cache.limit >= cache.count);
 
         if cache.limit == cache.count {
@@ -55,7 +55,7 @@ impl<T> Sequence for Owned<T> {
         }
     }
 
-    fn claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Result<Counter, Counter> {
+    fn claim<L: Limit>(&self, cache: &mut Cache, limit: &L) -> Result<Counter, Counter> {
         self.try_claim(cache, limit).ok_or(cache.count)
     }
 

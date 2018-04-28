@@ -22,7 +22,7 @@ impl<T> Sequence for Preemptive<T> {
     type Item = T;
     type Cache = Cache;
 
-    fn and_cache() -> (Self, Cache) {
+    fn new() -> (Self, Cache) {
         (
             Preemptive {
                 _marker: PhantomData,
@@ -39,7 +39,7 @@ impl<T> Sequence for Preemptive<T> {
         self.count.fetch()
     }
 
-    fn try_claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Option<Counter> {
+    fn try_claim<L: Limit>(&self, cache: &mut Cache, limit: &L) -> Option<Counter> {
         let mut claimed = self.claimed.fetch();
 
         loop {
@@ -60,7 +60,7 @@ impl<T> Sequence for Preemptive<T> {
         }
     }
 
-    fn claim<L: Limit>(&self, cache: &mut Cache, limit: L) -> Result<Counter, Counter> {
+    fn claim<L: Limit>(&self, cache: &mut Cache, limit: &L) -> Result<Counter, Counter> {
         let claimed = self.claimed.incr(1);
 
         if cache.limit <= claimed {
@@ -88,7 +88,7 @@ impl<T> Sequence for Preemptive<T> {
 }
 
 impl<T> Shared for Preemptive<T> {
-    fn new_cache<L: Limit>(&self, limit: L) -> Cache {
+    fn new_cache<L: Limit>(&self, limit: &L) -> Cache {
         Cache {
             limit: limit.count(),
         }

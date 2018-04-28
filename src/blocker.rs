@@ -14,6 +14,7 @@ pub struct Blocker {
 
 #[derive(Debug)]
 pub enum BlockKind {
+    Nothing,
     Sync(Thread),
 }
 
@@ -44,6 +45,7 @@ impl Blocker {
 
         if let Some(prev) = unsafe { prev.as_ref() } {
             match *prev {
+                Nothing => {}
                 Sync(ref thread) => {
                     thread.unpark();
                 }
