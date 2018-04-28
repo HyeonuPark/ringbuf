@@ -1,11 +1,16 @@
 
+use std::marker::PhantomData;
+
 use counter::{Counter, AtomicCounter};
 use sequence::{Sequence, Limit};
 
 #[derive(Debug)]
-pub struct Owned {
+pub struct Owned<T> {
+    _marker: PhantomData<*mut T>,
     count: AtomicCounter,
 }
+
+unsafe impl<T: Send> Sync for Owned<T> {}
 
 #[derive(Debug)]
 pub struct Cache {
@@ -13,12 +18,14 @@ pub struct Cache {
     limit: Counter,
 }
 
-impl Sequence for Owned {
+impl<T> Sequence for Owned<T> {
+    type Item = T;
     type Cache = Cache;
 
     fn and_cache() -> (Self, Cache) {
         (
             Owned {
+                _marker: PhantomData,
                 count: AtomicCounter::new(),
             },
             Cache {

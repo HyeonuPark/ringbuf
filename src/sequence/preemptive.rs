@@ -1,24 +1,31 @@
 
+use std::marker::PhantomData;
+
 use counter::{Counter, AtomicCounter};
 use sequence::{Sequence, Limit, Shared};
 
 #[derive(Debug)]
-pub struct Preemptive {
+pub struct Preemptive<T> {
+    _marker: PhantomData<*mut T>,
     count: AtomicCounter,
     claimed: AtomicCounter,
 }
+
+unsafe impl<T: Send> Sync for Preemptive<T> {}
 
 #[derive(Debug)]
 pub struct Cache {
     limit: Counter,
 }
 
-impl Sequence for Preemptive {
+impl<T> Sequence for Preemptive<T> {
+    type Item = T;
     type Cache = Cache;
 
     fn and_cache() -> (Self, Cache) {
         (
             Preemptive {
+                _marker: PhantomData,
                 count: AtomicCounter::new(),
                 claimed: AtomicCounter::new(),
             },
@@ -80,7 +87,7 @@ impl Sequence for Preemptive {
     }
 }
 
-impl Shared for Preemptive {
+impl<T> Shared for Preemptive<T> {
     fn new_cache<L: Limit>(&self, limit: L) -> Cache {
         Cache {
             limit: limit.count(),
