@@ -15,56 +15,40 @@ use std::ops;
 ///
 /// It has identical memory layout as `usize`, but doesn't break its meaning when overflowed.
 ///
-/// To archive this goal, `Counter` uses its MSB as an overflow-detection field.
-/// Initially all counters have their MSB as `0` and it will be flipped when they overflow.
-/// So if it's known that this counter is greater than that one and their difference is
-/// less than `isize::MAX`, we can always calculate their offset safely regardless
-/// either or both ones are overflowed.
+/// To archive this goal, `Counter` splits the value space of `usize` into 3 regions
+/// based on their highest 2 bits. Basically, it follows same ordering semantics as `usize`,
+/// but counters with highest bits `11` is considered ALWAYS LESS THAN ones with `00`.
 ///
-/// Note that it's user's responsibility to keep these restrictions.
+/// This makes the ordering semantics of `Counter` circular, and comparing 2 counters
+/// whose difference is greater than `usize::MAX >> 2` can produce INVALID RESULT.
+/// So user MUST ensure that differences of counters within same context never reach this level.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Counter(usize);
 
 /// Thread safe shared container for `Counter`.
-///
-/// Most operations use `Relaxed` ordering internally.
 #[derive(Debug, Default)]
 pub struct AtomicCounter(AtomicUsize);
 
 /// Constant initializer for AtomicCounter
 pub const ATOMIC_COUNTER_INIT: AtomicCounter = AtomicCounter(ATOMIC_USIZE_INIT);
 
-const MSB: usize = !(!0 >> 1);
+const FLAG: usize = !(!0 >> 2);
 
 impl Counter {
     /// Create a new counter.
     pub fn new(num: usize) -> Self {
         Counter(num)
     }
-
-    /// Split this counter to its overflow flag and internal representation.
-    pub fn split(self) -> (bool, usize) {
-        (
-            self.0 & MSB != 0,
-            self.0 & !MSB,
-        )
-    }
-
-    /// Flip its overflow flag.
-    pub fn flip(self) -> Self {
-        Counter(self.0 ^ MSB)
-    }
 }
 
 impl PartialOrd for Counter {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let (self_flag, self_val) = self.split();
-        let (other_flag, other_val) = other.split();
-
-        if self_flag ^ other_flag {
+        if FLAG & self.0 & !other.0 == FLAG {
+            Some(Ordering::Less)
+        } else if FLAG & !self.0 & other.0 == FLAG {
             Some(Ordering::Greater)
         } else {
-            PartialOrd::partial_cmp(&self_val, &other_val)
+            PartialOrd::partial_cmp(&self.0, &other.0)
         }
     }
 }
@@ -84,16 +68,17 @@ impl ops::AddAssign<usize> for Counter {
 }
 
 impl ops::Sub<Self> for Counter {
-    type Output = usize;
+    type Output = isize;
 
-    fn sub(self, rhs: Self) -> usize {
-        let (left_flag, left_val) = self.split();
-        let (right_flag, right_val) = rhs.split();
-
-        if left_flag ^ right_flag {
-            MSB + left_val - right_val
+    fn sub(self, rhs: Self) -> isize {
+        if FLAG & self.0 & !rhs.0 == FLAG {
+            0isize - (rhs.0 as isize) - (!0 - self.0) as isize
+        } else if FLAG & !self.0 & rhs.0 == FLAG {
+            1isize + (self.0 as isize) + (!0 - rhs.0) as isize
         } else {
-            left_val - right_val
+            unsafe {
+                ::std::mem::transmute(self.0.wrapping_sub(rhs.0))
+            }
         }
     }
 }

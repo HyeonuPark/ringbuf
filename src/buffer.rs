@@ -26,7 +26,7 @@ struct Inner<H: BufInfo, T> {
 impl<H: BufInfo, T: Default> Buffer<H, T> {
     pub fn new(head: H, capacity: usize) -> Self {
         assert!(capacity.is_power_of_two());
-        assert_ne!(capacity << 1, 0);
+        assert_ne!(capacity << 2, 0);
 
         let mut body: Vec<T> = (0..capacity).map(|_| T::default()).collect();
         let ptr = body.as_ptr();

@@ -1,17 +1,6 @@
 use super::*;
 
 #[test]
-fn test_counter_split() {
-    let zero = Counter::new(0);
-
-    assert_eq!(zero.split(), (false, 0));
-    assert_eq!((zero + 1).split(), (false, 1));
-    assert_eq!((zero + MSB).split(), (true, 0));
-    assert_eq!((zero + !MSB).split(), (false, !MSB));
-    assert_eq!((zero + !0).split(), (true, !MSB));
-}
-
-#[test]
 fn test_compare_counters() {
     let zero = Counter::new(0);
 
@@ -27,41 +16,42 @@ fn test_compare_counters() {
 
     assert_eq!(one - zero, 1);
     assert_eq!(zero - zero, 0);
+    assert_eq!(zero - one, -1);
 }
 
 #[test]
 fn test_compare_overflowed_counters() {
-    const MAX: usize = (!0) >> 1;
+    const STEP: usize = (!0 >> 1) & !(!0 >> 2); // 0b01000..000
 
-    let zero1 = Counter::new(0);
-    let imax1 = zero1 + MAX;
-    let zero2 = imax1 + 1;
-    let imax2 = zero2 + MAX;
+    let step0 = Counter::new(0);
+    let step1 = step0 + STEP;
+    let step2 = step1 + STEP;
+    let step3 = step2 + STEP;
 
-    assert_eq!(zero1.split(), (false, 0));
-    assert_eq!(imax1.split(), (false, MAX));
-    assert_eq!(zero2.split(), (true, 0));
-    assert_eq!(imax2.split(), (true, MAX));
+    assert_eq!(step0, step0);
+    assert_eq!(step1, step1);
+    assert_eq!(step2, step2);
+    assert_eq!(step3, step3);
 
-    assert_eq!(zero1, zero1);
-    assert_eq!(imax1, imax1);
-    assert_eq!(zero2, zero2);
-    assert_eq!(imax2, imax2);
+    assert_eq!(step1 - step0, STEP as isize);
+    assert_eq!(step2 - step1, STEP as isize);
+    assert_eq!(step3 - step2, STEP as isize);
+    assert_eq!(step0 - step3, STEP as isize);
 
-    assert!(zero1 > zero2);
-    assert!(zero2 > zero1);
-    assert!(imax1 > imax2);
-    assert!(imax2 > imax1);
+    assert!(step0 < step0 + 1);
+    assert!(step1 < step1 + 1);
+    assert!(step2 < step2 + 1);
+    assert!(step3 < step3 + 1);
 
-    assert!(zero1 < imax1);
-    assert!(imax1 > zero1);
-    assert!(zero2 < imax2);
-    assert!(imax2 > zero2);
+    assert!(step0 < step1);
+    assert!(step1 < step2);
+    assert!(step2 < step3);
+    assert!(step3 < step0);
 
-    assert!(zero1 > imax2);
-    assert!(imax2 > zero1);
-    assert!(zero2 > imax1);
-    assert!(imax1 > zero2);
+    assert!(step1 > step0);
+    assert!(step2 > step1);
+    assert!(step3 > step2);
+    assert!(step0 > step3);
 }
 
 #[test]
@@ -94,10 +84,10 @@ fn test_overflowed_counter_incr() {
     use std::thread;
     use std::mem::transmute;
 
-    const LARGE: usize = ::std::usize::MAX - 8000;
+    const HUGE: usize = ::std::usize::MAX - 8000;
 
-    let counter: Arc<AtomicCounter> = Arc::new(unsafe { transmute(LARGE) });
-    let counter_init: Counter = unsafe { transmute(LARGE) };
+    let counter: Arc<AtomicCounter> = Arc::new(unsafe { transmute(HUGE) });
+    let counter_init: Counter = Counter::new(HUGE);
 
     let handles: Vec<_> = (0..8).map(|_| {
         let counter = counter.clone();
