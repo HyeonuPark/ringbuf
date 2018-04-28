@@ -109,7 +109,8 @@ pub trait Shared: Sequence {
 
 impl<T> Bucket<T> {
     pub fn get(&self) -> T {
-        debug_assert!(self.has_inner.load(SeqCst),
+        #[cfg(debug_assertions)]
+        assert!(self.has_inner.load(SeqCst),
             "Bucket::get should not be called on empty slot");
 
         let res = unsafe {
@@ -123,7 +124,8 @@ impl<T> Bucket<T> {
     }
 
     pub fn set(&self, item: T) {
-        debug_assert!(!self.has_inner.load(SeqCst),
+        #[cfg(debug_assertions)]
+        assert!(!self.has_inner.load(SeqCst),
             "Bucket::set should not be called on non-empty Bucket");
 
         unsafe {
