@@ -6,6 +6,7 @@ use std::{ptr, mem};
 use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 
 pub mod owned;
+pub mod preemptive;
 
 use counter::Counter;
 use blocker::{Blocker, BlockerNode, BlockerContainer};
@@ -104,7 +105,7 @@ pub trait Limit: Clone {
 }
 
 pub trait Shared: Sequence {
-    fn new_cache(&self) -> Self::Cache;
+    fn new_cache<L: Limit>(&self, limit: L) -> Self::Cache;
 }
 
 impl<T> Bucket<T> {
@@ -170,7 +171,7 @@ impl<'a, 'b, 'c, S, T> Slot<'a, 'b, 'c, S, T> where S: Sequence {
 }
 
 impl<'a, 'b, 'c, S, T, L> TrySlot<'a, 'b, 'c, S, T, L> where S: Sequence, L: Limit {
-    fn check(&self) -> bool {
+    pub fn check(&self) -> bool {
         self.limit.count() > self.slot.count
     }
 
