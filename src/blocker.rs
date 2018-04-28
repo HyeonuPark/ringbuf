@@ -36,7 +36,8 @@ impl Blocker {
     }
 
     pub fn unblock(&self) {
-        match self.kind.as_ref().expect("Calling Blocker::unblock on non-blocked case") {
+        let kind = self.kind.as_ref().expect("Calling Blocker::unblock on non-blocked case");
+        match *kind {
             BlockKind::Sync(ref thread) => {
                 thread.unpark();
             }
