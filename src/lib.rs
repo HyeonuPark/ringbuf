@@ -6,7 +6,9 @@
 //! Channels are based on fixed-sized ring buffer. Send operations simply fail
 //! if backing buffer is full, and you can get back message you sent from error.
 
+pub mod intrusive;
 pub mod counter;
+
 pub mod blocker;
 pub mod buffer;
 pub mod sequence;
