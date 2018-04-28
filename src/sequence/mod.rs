@@ -1,16 +1,20 @@
 
 use std::ops::Index;
-use std::cell::Cell;
-use std::sync::Arc;
+use std::cell::UnsafeCell;
+use std::{ptr, mem};
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 
 pub mod owned;
 
 use counter::Counter;
-use blocker::{Blocker, BlockerStack};
+use blocker::{Blocker, BlockerNode, BlockerContainer};
 
 pub struct Bucket<T> {
-    blockers: BlockerStack,
-    inner: Cell<Option<T>>,
+    blockers: BlockerContainer,
+    inner: UnsafeCell<T>,
+    #[cfg(debug_assertions)]
+    has_inner: AtomicBool,
 }
 
 pub struct Slot<'a, 'b, 'c, S, T> where S: Sequence + 'a, S::Cache: 'b, T: 'c {
@@ -64,7 +68,7 @@ pub trait Sequence: Sized {
         cache: &'b mut Self::Cache,
         limit: L,
         buf: &'c B,
-        blocker: &Arc<Blocker>,
+        blocker: &BlockerNode,
     ) -> Result<Slot<'a, 'b, 'c, Self, T>, TrySlot<'a, 'b, 'c, Self, T, L>> where
         L: Limit,
         B: Index<Counter, Output=Bucket<T>>,
@@ -105,20 +109,45 @@ pub trait Shared: Sequence {
 
 impl<T> Bucket<T> {
     pub fn get(&self) -> T {
-        self.inner.take()
-            .expect("Bucket::get should not be called on empty slot")
+        debug_assert!(self.has_inner.load(SeqCst),
+            "Bucket::get should not be called on empty slot");
+
+        let res = unsafe {
+            ptr::read(self.inner.get())
+        };
+
+        #[cfg(debug_assertions)]
+        self.has_inner.store(false, SeqCst);
+
+        res
     }
 
     pub fn set(&self, item: T) {
-        match self.inner.replace(Some(item)) {
-            Some(_) => panic!("Bucket::set should not be called on non-empty Bucket"),
-            None => {}
+        debug_assert!(!self.has_inner.load(SeqCst),
+            "Bucket::set should not be called on non-empty Bucket");
+
+        unsafe {
+            ptr::write(self.inner.get(), item);
         }
+
+        #[cfg(debug_assertions)]
+        self.has_inner.store(true, SeqCst);
     }
 
     pub fn notify(&self) {
         if let Some(blocker) = self.blockers.pop() {
             blocker.unblock();
+        }
+    }
+}
+
+impl<T> Default for Bucket<T> {
+    fn default() -> Self {
+        Bucket {
+            blockers: Blocker::container(),
+            inner: UnsafeCell::new(unsafe { mem::uninitialized() }),
+            #[cfg(debug_assertions)]
+            has_inner: false.into(),
         }
     }
 }
