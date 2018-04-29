@@ -18,10 +18,13 @@ pub struct Receiver<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> {
 }
 
 #[derive(Debug)]
-pub enum SendError<T> {
+pub enum TrySendError<T> {
     BufferFull(T),
     ReceiverClosed(T),
 }
+
+#[derive(Debug)]
+pub struct SendError<T>(pub T);
 
 #[derive(Debug)]
 pub struct ReceiveError;
@@ -54,21 +57,24 @@ impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Sender<S, R, T> {
         self.half.close()
     }
 
-    pub fn try_send(&mut self, msg: T) -> Result<(), SendError<T>> {
+    pub fn try_send(&mut self, msg: T) -> Result<(), TrySendError<T>> {
         if let Some(slot) = self.half.try_advance() {
             slot.set(msg);
             return Ok(());
         }
 
-        Err(if self.is_closed() {
-            SendError::ReceiverClosed(msg)
+        if self.is_closed() {
+            Err(TrySendError::ReceiverClosed(msg))
         } else {
-            SendError::BufferFull(msg)
-        })
+            Err(TrySendError::BufferFull(msg))
+        }
     }
 
-    pub fn sync_send(&mut self, msg: T) {
-        unimplemented!()
+    pub fn sync_send(&mut self, msg: T) -> Result<(), SendError<T>> {
+        match self.half.sync_advance() {
+            Some(slot) => Ok(slot.set(msg)),
+            None => Err(SendError(msg)),
+        }
     }
 }
 
@@ -94,6 +100,6 @@ impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Receiver<S, R, T> {
     }
 
     pub fn sync_recv(&mut self) -> Option<T> {
-        unimplemented!()
+        self.half.sync_advance().map(|slot| slot.get())
     }
 }

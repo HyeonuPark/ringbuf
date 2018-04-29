@@ -3,11 +3,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use std::ops::Drop;
 use std::cell::Cell;
+use std::thread;
 
 use counter::Counter;
 use buffer::{Buffer, BufInfo};
 use blocker::{Blocker, BlockerNode, BlockKind};
-use sequence::{Sequence, Limit, Shared, Bucket, Slot, TrySlot};
+use sequence::{Sequence, Limit, Shared, Bucket, Slot};
 
 #[derive(Debug)]
 pub struct Head<S: Sequence, R: Sequence> {
@@ -47,21 +48,23 @@ pub struct SenderHead<S: Sequence, R: Sequence>(pub Arc<Head<S, R>>, pub usize);
 pub struct ReceiverHead<S: Sequence, R: Sequence>(pub Arc<Head<S, R>>);
 
 #[derive(Debug)]
-pub struct Half<B: BufInfo, H: HeadHalf<Near=S>, S: Sequence<Item=T>, T: Send> {
+pub struct Half<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence<Item=T>, T: Send> {
     buf: Buffer<B, Bucket<T>>,
     head: H,
     cache: S::Cache,
-    node: BlockerNode,
-    blocked: Box<BlockKind>,
     is_closed_cache: Cell<bool>,
+    block_node: BlockerNode,
+    block_kind: Box<BlockKind>,
+
+    // for sanity check
+    #[cfg(debug_assertions)]
+    is_blocked: bool,
 }
 
 pub trait HeadHalf: Clone + Limit {
-    type Near: Sequence;
-    type Far: Sequence;
+    type Seq: Sequence;
 
-    fn near(&self) -> &Self::Near;
-    fn far(&self) -> &Self::Far;
+    fn seq(&self) -> &Self::Seq;
     fn amount(&self) -> &AtomicUsize;
     fn is_closed(&self) -> &AtomicBool;
 }
@@ -79,15 +82,10 @@ impl<S: Sequence, R: Sequence> Limit for SenderHead<S, R> {
 }
 
 impl<S: Sequence, R: Sequence> HeadHalf for SenderHead<S, R> {
-    type Near = S;
-    type Far = R;
+    type Seq = S;
 
-    fn near(&self) -> &S {
+    fn seq(&self) -> &S {
         &self.0.sender_seq
-    }
-
-    fn far(&self) -> &R {
-        &self.0.receiver_seq
     }
 
     fn amount(&self) -> &AtomicUsize {
@@ -112,15 +110,10 @@ impl<S: Sequence, R: Sequence> Limit for ReceiverHead<S, R> {
 }
 
 impl<S: Sequence, R: Sequence> HeadHalf for ReceiverHead<S, R> {
-    type Near = R;
-    type Far = S;
+    type Seq = R;
 
-    fn near(&self) -> &R {
+    fn seq(&self) -> &R {
         &self.0.receiver_seq
-    }
-
-    fn far(&self) -> &S {
-        &self.0.sender_seq
     }
 
     fn amount(&self) -> &AtomicUsize {
@@ -132,29 +125,48 @@ impl<S: Sequence, R: Sequence> HeadHalf for ReceiverHead<S, R> {
     }
 }
 
-impl<B: BufInfo, H: HeadHalf<Near=S>, S: Sequence<Item=T>, T: Send> Half<B, H, S, T> {
+macro_rules! is_closed {
+    ($this:expr) => ({
+        if $this.is_closed_cache.get() {
+            true
+        } else if $this.head.is_closed().load(Ordering::Acquire) {
+            $this.is_closed_cache.set(true);
+            true
+        } else {
+            false
+        }
+    });
+}
+
+macro_rules! advance {
+    ($this:expr) => ({
+        assert!($this.block_node.set(&mut $this.block_kind));
+
+        $this.head.seq().advance(
+            &mut $this.cache,
+            &$this.head,
+            &$this.buf,
+            $this.block_node.clone(),
+        )
+    });
+}
+
+impl<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence<Item=T>, T: Send> Half<B, H, S, T> {
     pub fn new(buf: Buffer<B, Bucket<T>>, head: H, cache: S::Cache) -> Self {
         Half {
             buf,
             head,
             cache,
-            node: Blocker::new(),
-            blocked: Box::new(BlockKind::Nothing),
             is_closed_cache: false.into(),
+            block_node: Blocker::new(),
+            block_kind: Box::new(BlockKind::Nothing),
+            #[cfg(debug_assertions)]
+            is_blocked: false,
         }
     }
 
     pub fn is_closed(&self) -> bool {
-        if self.is_closed_cache.get() {
-            return true;
-        }
-
-        if self.head.is_closed().load(Ordering::Acquire) {
-            self.is_closed_cache.set(true);
-            true
-        } else {
-            false
-        }
+        is_closed!(self)
     }
 
     pub fn close(&mut self) {
@@ -167,17 +179,44 @@ impl<B: BufInfo, H: HeadHalf<Near=S>, S: Sequence<Item=T>, T: Send> Half<B, H, S
     }
 
     pub fn try_advance(&mut self) -> Option<Slot<S>> {
-        self.head.near().try_advance(
+        if is_closed!(self) {
+            return None;
+        }
+
+        self.head.seq().try_advance(
             &mut self.cache,
             &self.head,
             &self.buf,
         )
     }
+
+    pub fn sync_advance(&mut self) -> Option<Slot<S>> {
+        if is_closed!(self) {
+            return None;
+        }
+
+        *self.block_kind = BlockKind::Sync(thread::current());
+        let mut try_slot = advance!(self);
+
+        loop {
+            if is_closed!(self) {
+                return None;
+            }
+
+            match try_slot.try_unwrap() {
+                Ok(slot) => return Some(slot),
+                Err(try_again) => {
+                    try_slot = try_again;
+                    thread::park();
+                }
+            }
+        }
+    }
 }
 
 impl<B, H, S, T> Clone for Half<B, H, S, T> where
     B: BufInfo,
-    H: HeadHalf<Near=S>,
+    H: HeadHalf<Seq=S>,
     S: Shared + Sequence<Item=T>,
     T: Send,
 {
@@ -187,14 +226,14 @@ impl<B, H, S, T> Clone for Half<B, H, S, T> where
         Half::new(
             self.buf.clone(),
             self.head.clone(),
-            self.head.near().new_cache(&self.head),
+            self.head.seq().new_cache(&self.head),
         )
     }
 }
 
 impl<B, H, S, T> Drop for Half<B, H, S, T> where
     B: BufInfo,
-    H: HeadHalf<Near=S>,
+    H: HeadHalf<Seq=S>,
     S: Sequence<Item=T>,
     T: Send,
 {

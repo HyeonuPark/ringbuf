@@ -60,20 +60,8 @@ impl<T> Sequence for Preemptive<T> {
         }
     }
 
-    fn claim<L: Limit>(&self, cache: &mut Cache, limit: &L) -> Result<Counter, Counter> {
-        let claimed = self.claimed.incr(1);
-
-        if cache.limit <= claimed {
-            let recent_limit = limit.count();
-            debug_assert!(recent_limit >= cache.limit);
-            cache.limit = recent_limit;
-        }
-
-        if cache.limit <= claimed {
-            Err(claimed)
-        } else {
-            Ok(claimed)
-        }
+    fn claim(&self, _cache: &mut Cache) -> Counter {
+        self.claimed.incr(1)
     }
 
     fn commit(&self, _cache: &mut Cache, count: Counter) {

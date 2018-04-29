@@ -33,7 +33,7 @@ impl Blocker {
     }
 
     /// Returns true if this blocker isn't hold any `BlockKind` previously.
-    pub fn replace(&self, kind: &mut BlockKind) -> bool {
+    pub fn set(&self, kind: &mut BlockKind) -> bool {
         let prev = self.kind.swap(kind, Ordering::AcqRel);
         prev.is_null()
     }

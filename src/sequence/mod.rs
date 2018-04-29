@@ -30,8 +30,9 @@ pub struct Slot<'a, 'b, 'c, S> where S: Sequence + 'a, S::Cache: 'b, S::Item: 'c
 pub struct TrySlot<'a, 'b, 'c, 'd, S, L> where
     S: Sequence + 'a, S::Cache: 'b, S::Item: 'c, L: Limit + 'd
 {
-    slot: Slot<'a, 'b, 'c, S>,
     limit: &'d L,
+    blocker: BlockerNode,
+    slot: Slot<'a, 'b, 'c, S>,
 }
 
 pub trait Sequence: Sized {
@@ -44,7 +45,7 @@ pub trait Sequence: Sized {
 
     fn try_claim<L: Limit>(&self, cache: &mut Self::Cache, limit: &L) -> Option<Counter>;
 
-    fn claim<L: Limit>(&self, cache: &mut Self::Cache, limit: &L) -> Result<Counter, Counter>;
+    fn claim(&self, cache: &mut Self::Cache) -> Counter;
 
     fn commit(&self, cache: &mut Self::Cache, count: Counter);
 
@@ -74,33 +75,23 @@ pub trait Sequence: Sized {
         cache: &'b mut Self::Cache,
         limit: &'d L,
         buf: &'c B,
-        blocker: &BlockerNode,
-    ) -> Result<Slot<'a, 'b, 'c, Self>, TrySlot<'a, 'b, 'c, 'd, Self, L>> where
+        blocker: BlockerNode,
+    ) -> TrySlot<'a, 'b, 'c, 'd, Self, L> where
         L: Limit,
         B: Index<Counter, Output=Bucket<Self::Item>>,
         Self::Item: Send,
     {
-        match self.claim(cache, limit) {
-            Ok(count) => Ok(Slot {
+        let count = self.claim(cache);
+
+        TrySlot {
+            limit,
+            blocker,
+            slot: Slot {
                 seq: self,
                 bucket: &buf[count],
                 count,
                 cache,
-            }),
-            Err(count) => {
-                let bucket = &buf[count];
-                bucket.blockers.push(blocker.clone());
-
-                Err(TrySlot {
-                    limit,
-                    slot: Slot {
-                        seq: self,
-                        bucket,
-                        count,
-                        cache,
-                    }
-                })
-            }
+            },
         }
     }
 }
@@ -176,14 +167,11 @@ impl<'a, 'b, 'c, S> Slot<'a, 'b, 'c, S> where S: Sequence {
 }
 
 impl<'a, 'b, 'c, 'd, S, L> TrySlot<'a, 'b, 'c, 'd, S, L> where S: Sequence, L: Limit {
-    pub fn check(&self) -> bool {
-        self.limit.count() > self.slot.count
-    }
-
     pub fn try_unwrap(self) -> Result<Slot<'a, 'b, 'c, S>, Self> {
-        if self.check() {
+        if self.limit.count() > self.slot.count {
             Ok(self.slot)
         } else {
+            self.slot.bucket.blockers.push(self.blocker.clone());
             Err(self)
         }
     }

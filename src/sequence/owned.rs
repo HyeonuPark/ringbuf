@@ -55,8 +55,8 @@ impl<T> Sequence for Owned<T> {
         }
     }
 
-    fn claim<L: Limit>(&self, cache: &mut Cache, limit: &L) -> Result<Counter, Counter> {
-        self.try_claim(cache, limit).ok_or(cache.count)
+    fn claim(&self, cache: &mut Cache) -> Counter {
+        cache.count
     }
 
     fn commit(&self, cache: &mut Cache, count: Counter) {
