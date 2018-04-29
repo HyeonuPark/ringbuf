@@ -1,3 +1,4 @@
+sudo: true
 language: rust
 cache: cargo
 dist: trusty
