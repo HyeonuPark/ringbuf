@@ -75,6 +75,16 @@ impl<H: BufInfo, T> Buffer<H, T> {
         let index = (count & self.mask) as isize;
         unsafe { &*self.ptr.offset(index) }
     }
+
+    pub fn notify_all(&self) {
+        for i in 0..self.capacity() {
+            let bucket = self.get(Counter::new(i));
+
+            while let Some(blocker) = bucket.blockers.pop() {
+                blocker.unblock();
+            }
+        }
+    }
 }
 
 unsafe impl<H: BufInfo, T: Sync> Send for Buffer<H, T> {}

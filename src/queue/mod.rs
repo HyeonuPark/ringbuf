@@ -21,8 +21,8 @@ pub struct Receiver<S: Sequence, R: Sequence<Item=S::Item>> {
 
 #[derive(Debug)]
 pub enum TrySendError<T> {
-    BufferFull(T),
-    ReceiverClosed(T),
+    Full(T),
+    Closed(T),
 }
 
 #[derive(Debug)]
@@ -60,19 +60,27 @@ impl<S: Sequence, R: Sequence<Item=S::Item>> Sender<S, R> {
     }
 
     pub fn try_send(&mut self, msg: S::Item) -> Result<(), TrySendError<S::Item>> {
+        if self.half.is_closed() {
+            return Err(TrySendError::Closed(msg));
+        }
+
         if let Some(slot) = self.half.try_advance() {
             slot.set(msg);
             return Ok(());
         }
 
         if self.is_closed() {
-            Err(TrySendError::ReceiverClosed(msg))
+            Err(TrySendError::Closed(msg))
         } else {
-            Err(TrySendError::BufferFull(msg))
+            Err(TrySendError::Full(msg))
         }
     }
 
     pub fn sync_send(&mut self, msg: S::Item) -> Result<(), SendError<S::Item>> {
+        if self.half.is_closed() {
+            return Err(SendError(msg));
+        }
+
         match self.half.sync_advance() {
             Some(slot) => Ok(slot.set(msg)),
             None => Err(SendError(msg)),

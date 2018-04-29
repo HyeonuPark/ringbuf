@@ -179,10 +179,6 @@ impl<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence> Half<B, H, S> {
     }
 
     pub fn try_advance(&mut self) -> Option<Slot<S>> {
-        if is_closed!(self) {
-            return None;
-        }
-
         self.head.seq().try_advance(
             &mut self.cache,
             &self.head,
@@ -191,24 +187,20 @@ impl<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence> Half<B, H, S> {
     }
 
     pub fn sync_advance(&mut self) -> Option<Slot<S>> {
-        if is_closed!(self) {
-            return None;
-        }
-
         *self.block_kind = BlockKind::Sync(thread::current());
         let mut try_slot = advance!(self);
 
         loop {
-            if is_closed!(self) {
-                return None;
-            }
-
             match try_slot.try_unwrap() {
                 Ok(slot) => return Some(slot),
                 Err(try_again) => {
                     try_slot = try_again;
                     thread::park();
                 }
+            }
+
+            if is_closed!(self) {
+                return None;
             }
         }
     }
@@ -237,10 +229,9 @@ impl<B, H, S> Drop for Half<B, H, S> where
 {
     fn drop(&mut self) {
         if self.head.amount().fetch_sub(1, Ordering::Release) == 1 {
-            assert_eq!(self.head.amount.load(Ordering::Acquire), 0);
+            assert_eq!(self.head.amount().load(Ordering::Acquire), 0);
             self.close();
-            // TODO: notify blocked opposites
-            unimplemented!()
+            self.buf.notify_all();
         }
     }
 }
