@@ -8,7 +8,7 @@ use std::thread;
 use counter::Counter;
 use buffer::{Buffer, BufInfo};
 use blocker::{Blocker, BlockerNode, BlockKind};
-use sequence::{Sequence, Limit, Shared, Bucket, Slot};
+use sequence::{Sequence, Limit, Shared, Slot};
 
 #[derive(Debug)]
 pub struct Head<S: Sequence, R: Sequence> {
@@ -49,7 +49,7 @@ pub struct ReceiverHead<S: Sequence, R: Sequence>(pub Arc<Head<S, R>>);
 
 #[derive(Debug)]
 pub struct Half<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence> {
-    buf: Buffer<B, Bucket<S::Item>>,
+    buf: Buffer<B, S::Item>,
     head: H,
     cache: S::Cache,
     is_closed_cache: Cell<bool>,
@@ -152,7 +152,7 @@ macro_rules! advance {
 }
 
 impl<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence> Half<B, H, S> {
-    pub fn new(buf: Buffer<B, Bucket<S::Item>>, head: H, cache: S::Cache) -> Self {
+    pub fn new(buf: Buffer<B, S::Item>, head: H, cache: S::Cache) -> Self {
         Half {
             buf,
             head,
@@ -237,6 +237,7 @@ impl<B, H, S> Drop for Half<B, H, S> where
 {
     fn drop(&mut self) {
         if self.head.amount().fetch_sub(1, Ordering::Release) == 1 {
+            assert_eq!(self.head.amount.load(Ordering::Acquire), 0);
             self.close();
             // TODO: notify blocked opposites
             unimplemented!()

@@ -8,6 +8,9 @@ use sequence::Sequence;
 mod half;
 use self::half::{Head, Half, SenderHead, ReceiverHead};
 
+#[cfg(test)]
+mod tests;
+
 pub struct Sender<S: Sequence, R: Sequence<Item=S::Item>> {
     half: Half<Arc<Head<S, R>>, SenderHead<S, R>, S>,
 }

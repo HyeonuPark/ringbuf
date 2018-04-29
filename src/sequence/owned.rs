@@ -11,6 +11,7 @@ pub struct Owned<T> {
 }
 
 unsafe impl<T: Send> Sync for Owned<T> {}
+unsafe impl<T: Send> Send for Owned<T> {}
 
 #[derive(Debug)]
 pub struct Cache {

@@ -12,6 +12,7 @@ pub struct Preemptive<T> {
 }
 
 unsafe impl<T: Send> Sync for Preemptive<T> {}
+unsafe impl<T: Send> Send for Preemptive<T> {}
 
 #[derive(Debug)]
 pub struct Cache {

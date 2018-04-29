@@ -1,23 +1,15 @@
 
 use std::ops::Index;
-use std::cell::UnsafeCell;
-use std::{ptr, mem};
-#[cfg(debug_assertions)]
-use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 
 pub mod owned;
+pub use self::owned::Owned;
+
 pub mod preemptive;
+pub use self::preemptive::Preemptive;
 
 use counter::Counter;
-use blocker::{Blocker, BlockerNode, BlockerContainer};
-
-#[derive(Debug)]
-pub struct Bucket<T> {
-    blockers: BlockerContainer,
-    inner: UnsafeCell<T>,
-    #[cfg(debug_assertions)]
-    has_inner: AtomicBool,
-}
+use blocker::BlockerNode;
+use buffer::Bucket;
 
 #[derive(Debug)]
 pub struct Slot<'a, 'b, 'c, S> where S: Sequence + 'a, S::Cache: 'b, S::Item: 'c {
@@ -102,53 +94,6 @@ pub trait Shared: Sequence {
     fn new_cache<L: Limit>(&self, limit: &L) -> Self::Cache;
 }
 
-impl<T> Bucket<T> {
-    pub fn get(&self) -> T {
-        #[cfg(debug_assertions)]
-        assert!(self.has_inner.load(SeqCst),
-            "Bucket::get should not be called on empty slot");
-
-        let res = unsafe {
-            ptr::read(self.inner.get())
-        };
-
-        #[cfg(debug_assertions)]
-        self.has_inner.store(false, SeqCst);
-
-        res
-    }
-
-    pub fn set(&self, item: T) {
-        #[cfg(debug_assertions)]
-        assert!(!self.has_inner.load(SeqCst),
-            "Bucket::set should not be called on non-empty Bucket");
-
-        unsafe {
-            ptr::write(self.inner.get(), item);
-        }
-
-        #[cfg(debug_assertions)]
-        self.has_inner.store(true, SeqCst);
-    }
-
-    pub fn notify(&self) {
-        if let Some(blocker) = self.blockers.pop() {
-            blocker.unblock();
-        }
-    }
-}
-
-impl<T> Default for Bucket<T> {
-    fn default() -> Self {
-        Bucket {
-            blockers: Blocker::container(),
-            inner: UnsafeCell::new(unsafe { mem::uninitialized() }),
-            #[cfg(debug_assertions)]
-            has_inner: false.into(),
-        }
-    }
-}
-
 impl<'a, 'b, 'c, S> Slot<'a, 'b, 'c, S> where S: Sequence {
     pub fn get(self) -> S::Item {
         let res = self.bucket.get();
@@ -169,7 +114,7 @@ impl<'a, 'b, 'c, 'd, S, L> TrySlot<'a, 'b, 'c, 'd, S, L> where S: Sequence, L: L
         if self.limit.count() > self.slot.count {
             Ok(self.slot)
         } else {
-            self.slot.bucket.blockers.push(self.blocker.clone());
+            self.slot.bucket.register(self.blocker.clone());
             Err(self)
         }
     }
