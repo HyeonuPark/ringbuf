@@ -57,7 +57,6 @@ pub trait Sequence: Sized {
     ) -> Option<Slot<'a, 'b, 'c, Self>> where
         L: Limit,
         B: Index<Counter, Output=Bucket<Self::Item>>,
-        Self::Item: Send,
     {
         match self.try_claim(cache, limit) {
             None => None,
@@ -79,7 +78,6 @@ pub trait Sequence: Sized {
     ) -> TrySlot<'a, 'b, 'c, 'd, Self, L> where
         L: Limit,
         B: Index<Counter, Output=Bucket<Self::Item>>,
-        Self::Item: Send,
     {
         let count = self.claim(cache);
 

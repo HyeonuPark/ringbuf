@@ -48,8 +48,8 @@ pub struct SenderHead<S: Sequence, R: Sequence>(pub Arc<Head<S, R>>, pub usize);
 pub struct ReceiverHead<S: Sequence, R: Sequence>(pub Arc<Head<S, R>>);
 
 #[derive(Debug)]
-pub struct Half<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence<Item=T>, T: Send> {
-    buf: Buffer<B, Bucket<T>>,
+pub struct Half<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence> {
+    buf: Buffer<B, Bucket<S::Item>>,
     head: H,
     cache: S::Cache,
     is_closed_cache: Cell<bool>,
@@ -151,8 +151,8 @@ macro_rules! advance {
     });
 }
 
-impl<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence<Item=T>, T: Send> Half<B, H, S, T> {
-    pub fn new(buf: Buffer<B, Bucket<T>>, head: H, cache: S::Cache) -> Self {
+impl<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence> Half<B, H, S> {
+    pub fn new(buf: Buffer<B, Bucket<S::Item>>, head: H, cache: S::Cache) -> Self {
         Half {
             buf,
             head,
@@ -214,11 +214,10 @@ impl<B: BufInfo, H: HeadHalf<Seq=S>, S: Sequence<Item=T>, T: Send> Half<B, H, S,
     }
 }
 
-impl<B, H, S, T> Clone for Half<B, H, S, T> where
+impl<B, H, S> Clone for Half<B, H, S> where
     B: BufInfo,
     H: HeadHalf<Seq=S>,
-    S: Shared + Sequence<Item=T>,
-    T: Send,
+    S: Shared + Sequence,
 {
     fn clone(&self) -> Self {
         self.head.amount().fetch_add(1, Ordering::Relaxed);
@@ -231,11 +230,10 @@ impl<B, H, S, T> Clone for Half<B, H, S, T> where
     }
 }
 
-impl<B, H, S, T> Drop for Half<B, H, S, T> where
+impl<B, H, S> Drop for Half<B, H, S> where
     B: BufInfo,
     H: HeadHalf<Seq=S>,
-    S: Sequence<Item=T>,
-    T: Send,
+    S: Sequence,
 {
     fn drop(&mut self) {
         if self.head.amount().fetch_sub(1, Ordering::Release) == 1 {

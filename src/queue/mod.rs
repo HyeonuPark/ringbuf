@@ -1,5 +1,6 @@
 
 use std::sync::Arc;
+use std::fmt;
 
 use buffer::Buffer;
 use sequence::Sequence;
@@ -7,14 +8,12 @@ use sequence::Sequence;
 mod half;
 use self::half::{Head, Half, SenderHead, ReceiverHead};
 
-#[derive(Debug)]
-pub struct Sender<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> {
-    half: Half<Arc<Head<S, R>>, SenderHead<S, R>, S, T>,
+pub struct Sender<S: Sequence, R: Sequence<Item=S::Item>> {
+    half: Half<Arc<Head<S, R>>, SenderHead<S, R>, S>,
 }
 
-#[derive(Debug)]
-pub struct Receiver<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> {
-    half: Half<Arc<Head<S, R>>, ReceiverHead<S, R>, R, T>,
+pub struct Receiver<S: Sequence, R: Sequence<Item=S::Item>> {
+    half: Half<Arc<Head<S, R>>, ReceiverHead<S, R>, R>,
 }
 
 #[derive(Debug)]
@@ -29,9 +28,9 @@ pub struct SendError<T>(pub T);
 #[derive(Debug)]
 pub struct ReceiveError;
 
-pub fn create<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send>(
+pub fn create<S: Sequence, R: Sequence<Item=S::Item>>(
     capacity: usize
-) -> (Sender<S, R, T>, Receiver<S, R, T>) {
+) -> (Sender<S, R>, Receiver<S, R>) where S::Item: Send {
     let (sender_seq, sender_cache) = S::new();
     let (receiver_seq, receiver_cache) = R::new();
 
@@ -48,7 +47,7 @@ pub fn create<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send>(
     (sender, receiver)
 }
 
-impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Sender<S, R, T> {
+impl<S: Sequence, R: Sequence<Item=S::Item>> Sender<S, R> {
     pub fn is_closed(&self) -> bool {
         self.half.is_closed()
     }
@@ -57,7 +56,7 @@ impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Sender<S, R, T> {
         self.half.close()
     }
 
-    pub fn try_send(&mut self, msg: T) -> Result<(), TrySendError<T>> {
+    pub fn try_send(&mut self, msg: S::Item) -> Result<(), TrySendError<S::Item>> {
         if let Some(slot) = self.half.try_advance() {
             slot.set(msg);
             return Ok(());
@@ -70,7 +69,7 @@ impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Sender<S, R, T> {
         }
     }
 
-    pub fn sync_send(&mut self, msg: T) -> Result<(), SendError<T>> {
+    pub fn sync_send(&mut self, msg: S::Item) -> Result<(), SendError<S::Item>> {
         match self.half.sync_advance() {
             Some(slot) => Ok(slot.set(msg)),
             None => Err(SendError(msg)),
@@ -78,7 +77,13 @@ impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Sender<S, R, T> {
     }
 }
 
-impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Receiver<S, R, T> {
+impl<S: Sequence, R: Sequence<Item=S::Item>> fmt::Debug for Sender<S, R> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("Sender {}")
+    }
+}
+
+impl<S: Sequence, R:Sequence<Item=S::Item>> Receiver<S, R> {
     pub fn is_closed(&self) -> bool {
         self.half.is_closed()
     }
@@ -87,7 +92,7 @@ impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Receiver<S, R, T> {
         self.half.close()
     }
 
-    pub fn try_recv(&mut self) -> Result<Option<T>, ReceiveError> {
+    pub fn try_recv(&mut self) -> Result<Option<S::Item>, ReceiveError> {
         if let Some(slot) = self.half.try_advance() {
             return Ok(Some(slot.get()));
         }
@@ -99,7 +104,13 @@ impl<S: Sequence<Item=T>, R: Sequence<Item=T>, T: Send> Receiver<S, R, T> {
         }
     }
 
-    pub fn sync_recv(&mut self) -> Option<T> {
+    pub fn sync_recv(&mut self) -> Option<S::Item> {
         self.half.sync_advance().map(|slot| slot.get())
+    }
+}
+
+impl<S: Sequence, R: Sequence<Item=S::Item>> fmt::Debug for Receiver<S, R> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("Receiver {}")
     }
 }
