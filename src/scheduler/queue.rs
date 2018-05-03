@@ -2,7 +2,9 @@
 use std::sync::atomic::Ordering as O;
 use std::ptr;
 
-use super::{Role, Handle};
+use role::RoleKind;
+
+use super::Handle;
 use super::atomic::{Atomic, Ptr};
 
 /// Queue that holds blocked senders or receivers.
@@ -20,7 +22,7 @@ pub struct Queue<T> {
 
 #[derive(Debug)]
 pub struct Node<T> {
-    role: Role,
+    role: RoleKind,
     handle: Option<Box<Handle<T>>>,
     next: Atomic<Node<T>>,
 }
@@ -29,13 +31,13 @@ impl<T> Node<T> {
     /// Allocate a new node
     pub fn new() -> Box<Self> {
         Box::new(Node {
-            role: Role::Sender, // whatever
+            role: RoleKind::Sender, // whatever
             handle: None,
             next: Atomic::null(),
         })
     }
 
-    pub fn init(&mut self, role: Role, handle: Box<Handle<T>>) {
+    pub fn init(&mut self, role: RoleKind, handle: Box<Handle<T>>) {
         self.role = role;
         self.handle = Some(handle);
     }
@@ -47,11 +49,7 @@ impl<T> Node<T> {
 
 impl<T> Queue<T> {
     pub fn new() -> Self {
-        let sentinel = Ptr::new(Box::into_raw(Box::new(Node {
-            role: Role::Sender, // whatever
-            handle: None,
-            next: Atomic::null(),
-        })));
+        let sentinel = Ptr::new(Box::into_raw(Node::new()));
 
         Queue {
             head: Atomic::new(sentinel),
@@ -105,7 +103,7 @@ impl<T> Queue<T> {
     }
 
     /// Pop a node with given role, if exist.
-    pub fn pop(&self, role: Role) -> Option<Box<Node<T>>> {
+    pub fn pop(&self, role: RoleKind) -> Option<Box<Node<T>>> {
         loop {
             let head = self.head.load(O::Acquire);
             let next = unsafe { head.as_ref() }.unwrap().next.load(O::Acquire);

@@ -1,14 +1,15 @@
 
 use std::sync::Arc;
 
-mod slot;
+use slot::Slot;
+use role::Role;
+
 mod queue;
 mod atomic;
 mod notify;
 
 use self::queue::{Queue, Node};
 
-pub use self::slot::Slot;
 pub use self::notify::Notify;
 
 /// Scheduler for pause/resume executions
@@ -28,11 +29,7 @@ pub struct Handle<T> {
     node: Option<Box<Node<T>>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Role {
-    Sender,
-    Receiver,
-}
+unsafe impl<T: Send> Send for Scheduler<T> {}
 
 impl<T> Handle<T> {
     fn new() -> Box<Self> {
@@ -55,16 +52,17 @@ impl<T> Scheduler<T> {
         }
     }
 
-    pub fn slot(&self) -> Option<&Slot<T>> {
-        self.handle.as_ref().map(|handle| &handle.slot)
-    }
-
-    pub fn register(&mut self, role: Role, notify: Notify) -> bool {
+    pub fn register<R: Role<Item=T>>(
+        &mut self, role: &R, input: R::Input, notify: Notify
+    ) -> bool {
         let mut handle = self.handle.take().expect("Scheduler not restored");
         handle.notify = Some(notify);
+        unsafe {
+            role.init_slot(&handle.slot, input);
+        }
 
         let mut node = handle.node.take().expect("Node already taken");
-        node.init(role, handle);
+        node.init(role.kind(), handle);
 
         match self.queue.push(node) {
             Ok(()) => true,
@@ -77,18 +75,25 @@ impl<T> Scheduler<T> {
         }
     }
 
-    pub fn restore(&mut self) {
+    pub fn restore<R: Role<Item=T>>(&mut self, role: &R) -> R::Output {
         assert!(self.handle.is_none(), "Scheduler not consumed");
-        self.handle = Some(unsafe { Box::from_raw(self.ptr) });
+        let handle = unsafe { Box::from_raw(self.ptr) };
+        let res = unsafe {
+            role.consume_slot(&handle.slot)
+        };
+        self.handle = Some(handle);
+        res
     }
 
-    pub fn pop_blocked<F: FnOnce(&Slot<T>)>(&self, role: Role, cb: F) {
-        let mut node = match self.queue.pop(role) {
+    pub fn pop_blocked<R: Role<Item=T>>(&self, role: &R, buffer: *mut T) {
+        let mut node = match self.queue.pop(role.kind()) {
             None => return,
             Some(node) => node,
         };
         let mut handle = node.take_handle().expect("Handle already taken");
-        cb(&handle.slot);
+        unsafe {
+            role.exchange_counterpart(buffer, &handle.slot);
+        }
         handle.node = Some(node);
         handle.notify.take().unwrap().notify();
         Box::into_raw(handle);

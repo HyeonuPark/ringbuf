@@ -3,32 +3,43 @@ use std::sync::atomic::{AtomicUsize, AtomicBool};
 
 use sequence::{Sequence, Limit, Shared};
 use buffer::{Buffer, BufInfo};
+use role::{Role};
+use scheduler::{Scheduler};
 
 pub trait HeadHalf: Limit + Clone {
     type Seq: Sequence;
+    type Role: Role;
 
     fn seq(&self) -> &Self::Seq;
+    fn role(&self) -> &Self::Role;
     fn count(&self) -> &AtomicUsize;
     fn is_closed(&self) -> &AtomicBool;
 }
 
 #[derive(Debug)]
-pub struct Half<B: BufInfo, H: HeadHalf, T: Send> {
+pub struct Half<B: BufInfo, H: HeadHalf, T: Send> where H::Role: Role<Item=T> {
     buf: Buffer<B, T>,
     head: H,
     cache: <H::Seq as Sequence>::Cache,
+    scheduler: Scheduler<T>,
 }
 
-impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> {
-    pub fn new(buf: Buffer<B, T>, head: H, cache: <H::Seq as Sequence>::Cache) -> Self {
+type Input<T> = <<T as HeadHalf>::Role as Role>::Input;
+type Output<T> = <<T as HeadHalf>::Role as Role>::Output;
+
+impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T> {
+    pub fn new(
+        buf: Buffer<B, T>, head: H, cache: <H::Seq as Sequence>::Cache, scheduler: Scheduler<T>,
+    ) -> Self {
         Half {
             buf,
             head,
             cache,
+            scheduler,
         }
     }
 
-    pub fn try_advance<F: FnOnce(*mut T, V) -> U, U, V>(&mut self, f: F, arg: V) -> Result<U, V> {
+    pub fn try_advance(&mut self, input: Input<H>) -> Result<Output<H>, Input<H>> {
         let head = &self.head;
         let buf = &self.buf;
         let seq = head.seq();
@@ -36,11 +47,13 @@ impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> {
 
         match seq.try_claim(cache, head) {
             Some(count) => {
-                let res = f(buf.get_ptr(count), arg);
+                let res = unsafe {
+                    head.role().exchange_buffer(buf.get_ptr(count), input)
+                };
                 seq.commit(cache, count);
                 Ok(res)
             }
-            None => Err(arg),
+            None => Err(input),
         }
     }
 }
@@ -49,6 +62,7 @@ impl<B, H, T> Clone for Half<B, H, T> where
     B: BufInfo,
     H: HeadHalf,
     H::Seq: Shared,
+    H::Role: Role<Item=T>,
     T: Send
 {
     fn clone(&self) -> Self {
@@ -56,6 +70,7 @@ impl<B, H, T> Clone for Half<B, H, T> where
             buf: self.buf.clone(),
             head: self.head.clone(),
             cache: self.head.seq().new_cache(&self.head),
+            scheduler: self.scheduler.clone(),
         }
     }
 }
