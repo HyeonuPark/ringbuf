@@ -36,6 +36,7 @@ fn test_spinning_spsc() {
     handle.join().unwrap();
 }
 
+#[cfg(not(feature = "ci"))]
 #[test]
 fn test_spinning_mpmc() {
     let (tx, rx) = channel::<Competitive, Competitive, u64>(SIZE);
