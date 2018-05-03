@@ -63,7 +63,7 @@ impl<B, H, T> Clone for Half<B, H, T> where
     H: HeadHalf,
     H::Seq: Shared,
     H::Role: Role<Item=T>,
-    T: Send
+    T: Send,
 {
     fn clone(&self) -> Self {
         Half {

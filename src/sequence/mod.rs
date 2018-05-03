@@ -6,6 +6,9 @@ use counter::Counter;
 pub mod owned;
 pub mod competitive;
 
+pub use self::owned::Owned;
+pub use self::competitive::Competitive;
+
 pub trait Sequence: Sized {
     type Cache: Debug;
 

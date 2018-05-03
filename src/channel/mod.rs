@@ -9,6 +9,9 @@ mod head;
 mod half;
 mod exchange;
 
+#[cfg(test)]
+mod tests;
+
 use self::head::{Head, SenderHead, ReceiverHead};
 use self::half::Half;
 
