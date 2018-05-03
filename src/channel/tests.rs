@@ -8,7 +8,7 @@ use channel::channel;
 
 const COUNT: usize = 64000;
 const SIZE: usize = 64;
-const THREADS: usize = 4;
+const THREADS: usize = 2;
 
 #[test]
 fn test_spinning_spsc() {
