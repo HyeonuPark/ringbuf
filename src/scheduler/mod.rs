@@ -3,9 +3,7 @@ use std::sync::Arc;
 
 use slot::Slot;
 use role::Role;
-
 mod queue;
-mod atomic;
 mod notify;
 
 use self::queue::{Queue, Node};

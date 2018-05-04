@@ -1,37 +1,59 @@
 
-use std::sync::atomic::Ordering as O;
+use std::sync::atomic::{AtomicPtr, Ordering as O};
 use std::ptr;
 
 use role::RoleKind;
+use scheduler::Handle;
 
-use super::Handle;
-use super::atomic::{Atomic, Ptr};
-
-/// Queue that holds blocked senders or receivers.
-///
-/// The core invariance of this queue is, it MUST NOT contains
-/// both senders and receivers at the same time.
-///
-/// Also, this is an implementation of Michael-scott queue,
-/// so their invariances MUST be guaranteed.
 #[derive(Debug)]
 pub struct Queue<T> {
-    head: Atomic<Node<T>>,
-    tail: Atomic<Node<T>>,
+    head: Atomic<T>,
+    tail: Atomic<T>,
 }
 
 #[derive(Debug)]
 pub struct Node<T> {
     role: RoleKind,
     handle: Option<Box<Handle<T>>>,
-    next: Atomic<Node<T>>,
+    next: Atomic<T>,
+}
+
+#[derive(Debug)]
+#[repr(align(64))]
+struct Atomic<T> {
+    ptr: AtomicPtr<Node<T>>,
+}
+
+impl<T> Atomic<T> {
+    fn new(value: *mut Node<T>) -> Self {
+        Atomic {
+            ptr: AtomicPtr::new(value),
+        }
+    }
+
+    fn null() -> Self {
+        Atomic::new(ptr::null_mut())
+    }
+
+    fn load(&self) -> *mut Node<T> {
+        self.ptr.load(O::Acquire)
+    }
+
+    fn cas(&self, cond: *mut Node<T>, value: *mut Node<T>) -> Result<(), *mut Node<T>> {
+        let prev = self.ptr.compare_and_swap(cond, value, O::Release);
+
+        if ptr::eq(prev, cond) {
+            Ok(())
+        } else {
+            Err(prev)
+        }
+    }
 }
 
 impl<T> Node<T> {
-    /// Allocate a new node
     pub fn new() -> Box<Self> {
         Box::new(Node {
-            role: RoleKind::Sender, // whatever
+            role: RoleKind::Sender,
             handle: None,
             next: Atomic::null(),
         })
@@ -49,7 +71,7 @@ impl<T> Node<T> {
 
 impl<T> Queue<T> {
     pub fn new() -> Self {
-        let sentinel = Ptr::new(Box::into_raw(Node::new()));
+        let sentinel = Box::into_raw(Node::new());
 
         Queue {
             head: Atomic::new(sentinel),
@@ -57,44 +79,32 @@ impl<T> Queue<T> {
         }
     }
 
-    /// Push a node to this queue.
-    ///
-    /// Returns error with given node if currently the queue holds non-matching roles.
     pub fn push(&self, node: Box<Node<T>>) -> Result<(), Box<Node<T>>> {
         let role = node.role;
-        let node = Ptr::new(Box::into_raw(node)).next(); // to avoid ABA problem
+        let node = Box::into_raw(node);
+        let recover = || unsafe { Box::from_raw(node) };
 
-        // retry on race condition
         loop {
-            let head = self.head.load(O::Acquire);
-            let tail = self.tail.load(O::Acquire);
+            let head = self.head.load();
+            let tail = self.tail.load();
             let tail_ref = unsafe { tail.as_ref() }.unwrap();
 
-            // if this queue is not empty AND has nodes with different role
-            // then push operation should be fail to maintain the core invariance.
-            if head != tail && tail_ref.role != role {
-                return Err(unsafe { node.into_box() }.unwrap());
+            if !ptr::eq(head, tail) && tail_ref.role != role {
+                return Err(recover());
             }
 
-            // is `tail` the actual tail?
-            let next = tail_ref.next.load(O::Acquire);
+            let next = tail_ref.next.load();
             match unsafe { next.as_ref() } {
                 Some(next_ref) => {
-                    // now we now this queue is not empty,
-                    // so just checking role is enough.
                     if next_ref.role != role {
-                        return Err(unsafe { node.into_box() }.unwrap());
+                        return Err(recover());
                     }
 
-                    // anyway, the tail pointer is outdated
-                    // try to "help" by moving tail pointer forward
-                    let _ = self.tail.cas(tail, next, O::Release);
+                    let _ = self.tail.cas(tail, next);
                 }
                 None => {
-                    // attempt to link `node` to `tail`
-                    if tail_ref.next.cas(Ptr::null(), node, O::Release).is_ok() {
-                        // try to move the tail pointer forward
-                        let _ = self.tail.cas(tail, node, O::Release);
+                    if tail_ref.next.cas(ptr::null_mut(), node).is_ok() {
+                        let _ = self.tail.cas(tail, node);
                         return Ok(());
                     }
                 }
@@ -102,27 +112,22 @@ impl<T> Queue<T> {
         }
     }
 
-    /// Pop a node with given role, if exist.
     pub fn pop(&self, role: RoleKind) -> Option<Box<Node<T>>> {
         loop {
-            let head = self.head.load(O::Acquire);
-            let next = unsafe { head.as_ref() }.unwrap().next.load(O::Acquire);
+            let head = self.head.load();
+            let next = unsafe { head.as_ref() }.unwrap().next.load();
 
-            match unsafe { next.as_mut() } {
-                None => return None,
-                Some(next_ref) => {
-                    if next_ref.role != role {
-                        return None;
-                    }
+            let next_ref = unsafe { next.as_mut() }?;
 
-                    if self.head.cas(head, next, O::Release).is_ok() {
-                        unsafe {
-                            let mut res = head.into_box().unwrap();
-                            ptr::copy_nonoverlapping(
-                                &mut next_ref.handle, &mut res.handle, 1);
-                            return Some(res);
-                        }
-                    }
+            if next_ref.role != role {
+                return None;
+            }
+
+            if self.head.cas(head, next).is_ok() {
+                unsafe {
+                    let mut res = Box::from_raw(head);
+                    ptr::copy_nonoverlapping(&mut next_ref.handle, &mut res.handle, 1);
+                    return Some(res);
                 }
             }
         }
