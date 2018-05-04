@@ -1,10 +1,11 @@
 
 use std::sync::atomic::{AtomicUsize, AtomicBool};
+use std::thread;
 
 use sequence::{Sequence, Limit, Shared};
 use buffer::{Buffer, BufInfo};
 use role::{Role};
-use scheduler::{Scheduler};
+use scheduler::{Scheduler, Notify};
 
 pub trait HeadHalf: Limit + Clone {
     type Seq: Sequence;
@@ -54,6 +55,35 @@ impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T>
                 Ok(res)
             }
             None => Err(input),
+        }
+    }
+
+    pub fn sync_advance(&mut self, input: Input<H>) -> Output<H> {
+        let head = &self.head;
+        let buf = &self.buf;
+        let seq = head.seq();
+        let cache = &mut self.cache;
+        let scheduler = &mut self.scheduler;
+
+        let mut input = input;
+
+        loop {
+            // fast path
+            if let Some(count) = seq.try_claim(cache, head) {
+                let res = unsafe {
+                    head.role().exchange_buffer(buf.get_ptr(count), input)
+                };
+                seq.commit(cache, count);
+                return res;
+            }
+
+            match scheduler.register(head.role(), input, Notify::sync()) {
+                Ok(()) => {
+                    thread::park();
+                    return scheduler.restore(head.role());
+                }
+                Err(recover) => input = recover,
+            }
         }
     }
 }

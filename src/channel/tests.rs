@@ -89,3 +89,63 @@ fn test_spinning_mpmc() {
 
     assert_eq!(tx_sum, rx_sum);
 }
+
+#[test]
+fn test_sync_spsc() {
+    let (mut tx, mut rx) = channel::<Owned, Owned, usize>(SIZE);
+
+    let handle = thread::spawn(move|| {
+        for i in 0..COUNT {
+            tx.sync_send(i);
+        }
+    });
+
+    for i in 0..COUNT {
+        assert_eq!(rx.sync_recv(), i);
+    }
+
+    handle.join().unwrap();
+}
+
+#[test]
+fn test_sync_mpmc() {
+    let (tx, rx) = channel::<Competitive, Competitive, u64>(SIZE);
+
+    let senders: Vec<_> = (0..THREADS)
+        .map(|_| {
+            let mut tx = tx.clone();
+            thread::spawn(move|| {
+                let mut rng = thread_rng();
+                let mut acc = 0u64;
+
+                for _i in 0..COUNT {
+                    let num = rng.gen_range(0u64, 1024);
+                    acc += num;
+                    tx.sync_send(num);
+                }
+
+                acc
+            })
+        })
+        .collect();
+
+    let receivers: Vec<_> = (0..THREADS)
+        .map(|_| {
+            let mut rx = rx.clone();
+            thread::spawn(move|| {
+                let mut acc = 0u64;
+
+                for _ in 0..COUNT {
+                    acc += rx.sync_recv();
+                }
+
+                acc
+            })
+        })
+        .collect();
+
+    let tx_sum: u64 = senders.into_iter().map(|h| h.join().unwrap()).sum();
+    let rx_sum: u64 = receivers.into_iter().map(|h| h.join().unwrap()).sum();
+
+    assert_eq!(tx_sum, rx_sum);
+}

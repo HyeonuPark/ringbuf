@@ -58,6 +58,7 @@ impl<T> Atomic<T> {
 
 impl<T> Ptr<T> {
     pub fn new(inner: *mut T) -> Self {
+        debug_assert_eq!(inner as usize & FLAG, 0);
         Ptr {
             flag: 0,
             inner,

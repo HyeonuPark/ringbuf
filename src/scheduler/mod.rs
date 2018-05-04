@@ -54,7 +54,7 @@ impl<T> Scheduler<T> {
 
     pub fn register<R: Role<Item=T>>(
         &mut self, role: &R, input: R::Input, notify: Notify
-    ) -> bool {
+    ) -> Result<(), R::Input> {
         let mut handle = self.handle.take().expect("Scheduler not restored");
         handle.notify = Some(notify);
         unsafe {
@@ -64,15 +64,15 @@ impl<T> Scheduler<T> {
         let mut node = handle.node.take().expect("Node already taken");
         node.init(role.kind(), handle);
 
-        match self.queue.push(node) {
-            Ok(()) => true,
-            Err(mut node) => {
-                let mut handle = node.take_handle().expect("Handle already taken");
-                handle.node = Some(node);
-                self.handle = Some(handle);
-                false
-            }
-        }
+        self.queue.push(node).map_err(|mut node| {
+            let mut handle = node.take_handle().expect("Handle already taken");
+            let recover = unsafe {
+                role.recover_from_slot(&handle.slot)
+            };
+            handle.node = Some(node);
+            self.handle = Some(handle);
+            recover
+        })
     }
 
     pub fn restore<R: Role<Item=T>>(&mut self, role: &R) -> R::Output {

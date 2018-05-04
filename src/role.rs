@@ -17,8 +17,9 @@ pub trait Role: Default + Copy {
 
     fn kind(&self) -> RoleKind;
     unsafe fn exchange_buffer(&self, buffer: *mut Self::Item, input: Self::Input) -> Self::Output;
-    unsafe fn init_slot(&self, slot: &Slot<Self::Item>, input: Self::Input);
     unsafe fn exchange_counterpart(&self, buffer: *mut Self::Item, slot: &Slot<Self::Item>);
+    unsafe fn init_slot(&self, slot: &Slot<Self::Item>, input: Self::Input);
+    unsafe fn recover_from_slot(&self, slot: &Slot<Self::Item>) -> Self::Input;
     unsafe fn consume_slot(&self, slot: &Slot<Self::Item>) -> Self::Output;
 }
 
@@ -45,12 +46,16 @@ impl<T> Role for SenderRole<T> {
         ptr::write(buffer, input);
     }
 
+    unsafe fn exchange_counterpart(&self, buffer: *mut T, slot: &Slot<T>) {
+        slot.read_from(buffer);
+    }
+
     unsafe fn init_slot(&self, slot: &Slot<T>, input: T) {
         slot.write(input);
     }
 
-    unsafe fn exchange_counterpart(&self, buffer: *mut T, slot: &Slot<T>) {
-        slot.read_from(buffer);
+    unsafe fn recover_from_slot(&self, slot: &Slot<T>) -> T {
+        slot.read()
     }
 
     unsafe fn consume_slot(&self, _slot: &Slot<T>) -> () {
@@ -89,12 +94,16 @@ impl<T> Role for ReceiverRole<T> {
         ptr::read(buffer)
     }
 
+    unsafe fn exchange_counterpart(&self, buffer: *mut T, slot: &Slot<T>) {
+        slot.write_to(buffer);
+    }
+
     unsafe fn init_slot(&self, _slot: &Slot<T>, _input: ()) {
         // no-op
     }
 
-    unsafe fn exchange_counterpart(&self, buffer: *mut T, slot: &Slot<T>) {
-        slot.write_to(buffer);
+    unsafe fn recover_from_slot(&self, _slot: &Slot<T>) -> () {
+        // no-op
     }
 
     unsafe fn consume_slot(&self, slot: &Slot<T>) -> T {

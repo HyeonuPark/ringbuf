@@ -29,7 +29,13 @@ pub struct Receiver<S: Sequence, R: Sequence, T: Send> {
 pub struct TrySendError<T>(pub T);
 
 #[derive(Debug)]
+pub struct SyncSendError<T>(pub T);
+
+#[derive(Debug)]
 pub struct TryRecvError;
+
+#[derive(Debug)]
+pub struct SyncRecvError;
 
 pub fn channel<S: Sequence, R: Sequence, T: Send>(
     capacity: usize
@@ -70,6 +76,10 @@ impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, T> {
         self.half.try_advance(msg)
             .map_err(TrySendError)
     }
+
+    pub fn sync_send(&mut self, msg: T) {
+        self.half.sync_advance(msg);
+    }
 }
 
 impl<S: Shared, R: Sequence, T: Send> Clone for Sender<S, R, T> {
@@ -84,6 +94,10 @@ impl<S: Sequence, R: Sequence, T: Send> Receiver<S, R, T> {
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         self.half.try_advance(())
             .map_err(|_| TryRecvError)
+    }
+
+    pub fn sync_recv(&mut self) -> T {
+        self.half.sync_advance(())
     }
 }
 
