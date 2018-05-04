@@ -46,22 +46,22 @@ impl<T> Slot<T> {
 
     pub unsafe fn read_from(&self, location: *const T) {
         #[cfg(debug_assertions)]
-        self.before_read();
+        self.before_write();
 
         ptr::copy_nonoverlapping(location, self.slot.get(), 1);
 
         #[cfg(debug_assertions)]
-        self.after_read();
+        self.after_write();
     }
 
     pub unsafe fn write_to(&self, location: *mut T) {
         #[cfg(debug_assertions)]
-        self.before_write();
+        self.before_read();
 
         ptr::copy_nonoverlapping(self.slot.get(), location, 1);
 
         #[cfg(debug_assertions)]
-        self.after_write();
+        self.after_read();
     }
 
     pub fn read(&self) -> T {

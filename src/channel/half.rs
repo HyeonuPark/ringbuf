@@ -45,13 +45,18 @@ impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T>
         let buf = &self.buf;
         let seq = head.seq();
         let cache = &mut self.cache;
+        let scheduler = &mut self.scheduler;
 
         match seq.try_claim(cache, head) {
             Some(count) => {
+                let role = head.role();
+                let buffer = buf.get_ptr(count);
+
                 let res = unsafe {
-                    head.role().exchange_buffer(buf.get_ptr(count), input)
+                    role.exchange_buffer(buffer, input)
                 };
                 seq.commit(cache, count);
+                scheduler.pop_blocked(role, buffer);
                 Ok(res)
             }
             None => Err(input),
@@ -70,10 +75,14 @@ impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T>
         loop {
             // fast path
             if let Some(count) = seq.try_claim(cache, head) {
+                let role = head.role();
+                let buffer = buf.get_ptr(count);
+
                 let res = unsafe {
-                    head.role().exchange_buffer(buf.get_ptr(count), input)
+                    role.exchange_buffer(buffer, input)
                 };
                 seq.commit(cache, count);
+                scheduler.pop_blocked(role, buffer);
                 return res;
             }
 

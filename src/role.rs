@@ -10,6 +10,15 @@ pub enum RoleKind {
     Receiver,
 }
 
+impl RoleKind {
+    pub fn counterpart(self) -> Self {
+        match self {
+            RoleKind::Sender => RoleKind::Receiver,
+            RoleKind::Receiver => RoleKind::Sender,
+        }
+    }
+}
+
 pub trait Role: Default + Copy {
     type Item;
     type Input;

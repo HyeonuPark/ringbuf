@@ -84,7 +84,7 @@ impl<T> Scheduler<T> {
     }
 
     pub fn pop_blocked<R: Role<Item=T>>(&self, role: &R, buffer: *mut T) {
-        let mut node = match self.queue.pop(role.kind()) {
+        let mut node = match self.queue.pop(role.kind().counterpart()) {
             None => return,
             Some(node) => node,
         };
