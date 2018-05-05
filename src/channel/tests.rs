@@ -6,9 +6,19 @@ use rand::{Rng, thread_rng};
 use sequence::{Owned, Competitive};
 use channel::channel;
 
+#[cfg(not(feature = "ci"))]
 const COUNT: usize = 64000;
-const SIZE: usize = 64;
+#[cfg(not(feature = "ci"))]
+const SIZE: usize = 4;
+#[cfg(not(feature = "ci"))]
 const THREADS: usize = 2;
+
+#[cfg(feature = "ci")]
+const COUNT: usize = 6400000;
+#[cfg(feature = "ci")]
+const SIZE: usize = 128;
+#[cfg(feature = "ci")]
+const THREADS: usize = 4;
 
 #[test]
 fn test_spinning_spsc() {

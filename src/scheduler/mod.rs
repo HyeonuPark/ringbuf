@@ -1,111 +1,68 @@
 
 use std::sync::Arc;
 
-use slot::Slot;
 use role::Role;
+
+mod slot;
 mod queue;
 mod notify;
 
-use self::queue::{Queue, Node};
+use self::queue::{Queue, NodeBox};
 
 pub use self::notify::Notify;
+pub use self::slot::Slot;
 
 /// Scheduler for pause/resume executions
 /// Just like bounded queue itself,
 /// scheduler do not perform heap allocation during pause/resume.
 #[derive(Debug)]
-pub struct Scheduler<T> {
-    queue: Arc<Queue<T>>,
-    handle: Option<Box<Handle<T>>>,
-    ptr: *mut Handle<T>,
+pub struct Scheduler {
+    queue: Arc<Queue>,
+    node: Option<NodeBox>,
+    slot: Slot<NodeBox>,
 }
 
-#[derive(Debug)]
-pub struct Handle<T> {
-    slot: Slot<T>,
-    notify: Option<Notify>,
-    node: Option<Box<Node<T>>>,
-}
+unsafe impl Send for Scheduler {}
 
-unsafe impl<T: Send> Send for Scheduler<T> {}
-
-impl<T> Handle<T> {
-    fn new() -> Box<Self> {
-        Box::new(Handle {
-            slot: Slot::new(),
-            notify: None,
-            node: Some(Node::new()),
-        })
-    }
-}
-
-impl<T> Scheduler<T> {
+impl Scheduler {
     pub fn new() -> Self {
-        let mut handle = Handle::new();
-
         Scheduler {
             queue: Arc::new(Queue::new()),
-            ptr: &mut *handle,
-            handle: Some(handle),
+            node: Some(NodeBox::new()),
+            slot: Slot::new(),
         }
     }
 
-    pub fn register<R: Role<Item=T>>(
-        &mut self, role: &R, input: R::Input, notify: Notify
-    ) -> Result<(), R::Input> {
-        let mut handle = self.handle.take().expect("Scheduler not restored");
-        handle.notify = Some(notify);
-        unsafe {
-            role.init_slot(&handle.slot, input);
+    pub fn register<R: Role>(&mut self, notify: Notify) -> bool {
+        let node = self.node.take().expect("Scheduler not restored");
+
+        match self.queue.push(R::kind(), notify, node, self.slot.clone()) {
+            Ok(()) => true,
+            Err(node) => {
+                self.node = Some(node);
+                false
+            }
         }
-
-        let mut node = handle.node.take().expect("Node already taken");
-        node.init(role.kind(), handle);
-
-        self.queue.push(node).map_err(|mut node| {
-            let mut handle = node.take_handle().expect("Handle already taken");
-            let recover = unsafe {
-                role.recover_from_slot(&handle.slot)
-            };
-            handle.node = Some(node);
-            self.handle = Some(handle);
-            recover
-        })
     }
 
-    pub fn restore<R: Role<Item=T>>(&mut self, role: &R) -> R::Output {
-        assert!(self.handle.is_none(), "Scheduler not consumed");
-        let handle = unsafe { Box::from_raw(self.ptr) };
-        let res = unsafe {
-            role.consume_slot(&handle.slot)
-        };
-        self.handle = Some(handle);
-        res
+    pub fn restore(&mut self) {
+        assert!(self.node.is_none(), "Scheduler not registered");
+        self.node = Some(unsafe { self.slot.read() });
     }
 
-    pub fn pop_blocked<R: Role<Item=T>>(&self, role: &R, buffer: *mut T) {
-        let mut node = match self.queue.pop(role.kind().counterpart()) {
-            None => return,
-            Some(node) => node,
-        };
-        let mut handle = node.take_handle().expect("Handle already taken");
-        unsafe {
-            role.exchange_counterpart(buffer, &handle.slot);
+    pub fn pop_blocked<R: Role>(&self) {
+        if let Some(notify) = self.queue.pop(R::Opposite::kind()) {
+            notify.notify();
         }
-        handle.node = Some(node);
-        handle.notify.take().unwrap().notify();
-        Box::into_raw(handle);
     }
 }
 
-impl<T> Clone for Scheduler<T> {
+impl Clone for Scheduler {
     fn clone(&self) -> Self {
-        let mut handle = Handle::new();
-
         Scheduler {
             queue: self.queue.clone(),
-            ptr: &mut *handle,
-            handle: Some(handle),
+            node: Some(NodeBox::new()),
+            slot: Slot::new(),
         }
     }
 }

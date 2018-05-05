@@ -4,7 +4,7 @@ use std::thread;
 
 use sequence::{Sequence, Limit, Shared};
 use buffer::{Buffer, BufInfo};
-use role::{Role};
+use role::Role;
 use scheduler::{Scheduler, Notify};
 
 pub trait HeadHalf: Limit + Clone {
@@ -12,7 +12,6 @@ pub trait HeadHalf: Limit + Clone {
     type Role: Role;
 
     fn seq(&self) -> &Self::Seq;
-    fn role(&self) -> &Self::Role;
     fn count(&self) -> &AtomicUsize;
     fn is_closed(&self) -> &AtomicBool;
 }
@@ -22,15 +21,67 @@ pub struct Half<B: BufInfo, H: HeadHalf, T: Send> where H::Role: Role<Item=T> {
     buf: Buffer<B, T>,
     head: H,
     cache: <H::Seq as Sequence>::Cache,
-    scheduler: Scheduler<T>,
+    scheduler: Scheduler,
 }
 
 type Input<T> = <<T as HeadHalf>::Role as Role>::Input;
 type Output<T> = <<T as HeadHalf>::Role as Role>::Output;
 
+macro_rules! init_macros {
+    (
+        $bind:ident, $try_advance:ident,
+        $head:ident, $buf:ident, $cache:ident, $scheduler:ident, $seq:ident
+    ) => (
+        macro_rules! $bind {
+            ($this:expr, $input:ident) => (
+                macro_rules! input {
+                    () => ($input);
+                }
+                macro_rules! $head {
+                    () => (&$this.head);
+                }
+                macro_rules! $buf {
+                    () => (&$this.buf);
+                }
+                macro_rules! $cache {
+                    () => (&mut $this.cache);
+                }
+                macro_rules! $scheduler {
+                    () => (&mut $this.scheduler);
+                }
+                macro_rules! $seq {
+                    () => ($this.head.seq());
+                }
+            );
+        }
+        macro_rules! $try_advance {
+            ($Role:ty) => (
+                match $seq!().try_claim($cache!(), $head!()) {
+                    Some(count) => {
+                        let buffer = $buf!().get_ptr(count);
+
+                        let res = unsafe {
+                            <$Role>::interact(buffer, input!())
+                        };
+                        $seq!().commit($cache!(), count);
+                        $scheduler!().pop_blocked::<$Role>();
+                        Ok(res)
+                    }
+                    None => Err(input!()),
+                }
+            );
+        }
+    );
+}
+
+init_macros! {
+    bind, try_advance,
+    head, buf, cache, scheduler, seq
+}
+
 impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T> {
     pub fn new(
-        buf: Buffer<B, T>, head: H, cache: <H::Seq as Sequence>::Cache, scheduler: Scheduler<T>,
+        buf: Buffer<B, T>, head: H, cache: <H::Seq as Sequence>::Cache, scheduler: Scheduler,
     ) -> Self {
         Half {
             buf,
@@ -41,57 +92,23 @@ impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T>
     }
 
     pub fn try_advance(&mut self, input: Input<H>) -> Result<Output<H>, Input<H>> {
-        let head = &self.head;
-        let buf = &self.buf;
-        let seq = head.seq();
-        let cache = &mut self.cache;
-        let scheduler = &mut self.scheduler;
-
-        match seq.try_claim(cache, head) {
-            Some(count) => {
-                let role = head.role();
-                let buffer = buf.get_ptr(count);
-
-                let res = unsafe {
-                    role.exchange_buffer(buffer, input)
-                };
-                seq.commit(cache, count);
-                scheduler.pop_blocked(role, buffer);
-                Ok(res)
-            }
-            None => Err(input),
-        }
+        bind!(self, input);
+        try_advance!(H::Role)
     }
 
     pub fn sync_advance(&mut self, input: Input<H>) -> Output<H> {
-        let head = &self.head;
-        let buf = &self.buf;
-        let seq = head.seq();
-        let cache = &mut self.cache;
-        let scheduler = &mut self.scheduler;
-
         let mut input = input;
+        bind!(self, input);
 
         loop {
-            // fast path
-            if let Some(count) = seq.try_claim(cache, head) {
-                let role = head.role();
-                let buffer = buf.get_ptr(count);
-
-                let res = unsafe {
-                    role.exchange_buffer(buffer, input)
-                };
-                seq.commit(cache, count);
-                scheduler.pop_blocked(role, buffer);
-                return res;
+            match try_advance!(H::Role) {
+                Ok(output) => return output,
+                Err(retry) => input = retry,
             }
 
-            match scheduler.register(head.role(), input, Notify::sync()) {
-                Ok(()) => {
-                    thread::park();
-                    return scheduler.restore(head.role());
-                }
-                Err(recover) => input = recover,
+            if scheduler!().register::<H::Role>(Notify::sync()) {
+                thread::park();
+                scheduler!().restore();
             }
         }
     }

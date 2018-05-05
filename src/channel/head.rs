@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, AtomicBool};
 use counter::Counter;
 use sequence::{Sequence, Limit};
 use buffer::BufInfo;
-use role::{SenderRole, ReceiverRole};
+use role;
 
 use super::half::HeadHalf;
 
@@ -20,15 +20,15 @@ pub struct Head<S: Sequence, R: Sequence> {
 
 #[derive(Debug)]
 pub struct SenderHead<S: Sequence, R: Sequence, T> {
-    pub head: Arc<Head<S, R>>,
-    pub role: SenderRole<T>,
-    pub capacity: usize,
+    head: Arc<Head<S, R>>,
+    capacity: usize,
+    role: role::Sender<T>,
 }
 
 #[derive(Debug)]
 pub struct ReceiverHead<S: Sequence, R: Sequence, T> {
-    pub head: Arc<Head<S, R>>,
-    pub role: ReceiverRole<T>,
+    head: Arc<Head<S, R>>,
+    role: role::Receiver<T>,
 }
 
 impl<S: Sequence, R: Sequence> Head<S, R> {
@@ -49,16 +49,22 @@ impl<S: Sequence, R: Sequence> BufInfo for Arc<Head<S, R>> {
     }
 }
 
+impl<S: Sequence, R: Sequence, T> SenderHead<S, R, T> {
+    pub fn new(head: Arc<Head<S, R>>, capacity: usize) -> Self {
+        SenderHead {
+            head,
+            capacity,
+            role: Default::default(),
+        }
+    }
+}
+
 impl<S: Sequence, R: Sequence, T> HeadHalf for SenderHead<S, R, T> {
     type Seq = S;
-    type Role = SenderRole<T>;
+    type Role = role::Sender<T>;
 
     fn seq(&self) -> &S {
         &self.head.sender
-    }
-
-    fn role(&self) -> &SenderRole<T> {
-        &self.role
     }
 
     fn count(&self) -> &AtomicUsize {
@@ -86,16 +92,21 @@ impl<S: Sequence, R: Sequence, T> Clone for SenderHead<S, R, T> {
     }
 }
 
+impl<S: Sequence, R: Sequence, T> ReceiverHead<S, R, T> {
+    pub fn new(head: Arc<Head<S, R>>) -> Self {
+        ReceiverHead {
+            head,
+            role: Default::default(),
+        }
+    }
+}
+
 impl<S: Sequence, R: Sequence, T> HeadHalf for ReceiverHead<S, R, T> {
     type Seq = R;
-    type Role = ReceiverRole<T>;
+    type Role = role::Receiver<T>;
 
     fn seq(&self) -> &R {
         &self.head.receiver
-    }
-
-    fn role(&self) -> &ReceiverRole<T> {
-        &self.role
     }
 
     fn count(&self) -> &AtomicUsize {

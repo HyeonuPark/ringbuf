@@ -2,138 +2,102 @@
 use std::marker::PhantomData;
 use std::ptr;
 
-use slot::Slot;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RoleKind {
+pub enum Kind {
     Sender,
     Receiver,
 }
 
-impl RoleKind {
-    pub fn counterpart(self) -> Self {
-        match self {
-            RoleKind::Sender => RoleKind::Receiver,
-            RoleKind::Receiver => RoleKind::Sender,
-        }
-    }
-}
-
-pub trait Role: Default + Copy {
+pub trait Role: Default + Copy + private::Sealed {
     type Item;
+    type Opposite: Role;
     type Input;
     type Output;
 
-    fn kind(&self) -> RoleKind;
-    unsafe fn exchange_buffer(&self, buffer: *mut Self::Item, input: Self::Input) -> Self::Output;
-    unsafe fn exchange_counterpart(&self, buffer: *mut Self::Item, slot: &Slot<Self::Item>);
-    unsafe fn init_slot(&self, slot: &Slot<Self::Item>, input: Self::Input);
-    unsafe fn recover_from_slot(&self, slot: &Slot<Self::Item>) -> Self::Input;
-    unsafe fn consume_slot(&self, slot: &Slot<Self::Item>) -> Self::Output;
+    fn kind() -> Kind;
+    unsafe fn interact(buffer: *mut Self::Item, input: Self::Input) -> Self::Output;
+}
+
+mod private {
+    pub trait Sealed {}
 }
 
 #[derive(Debug)]
-pub struct SenderRole<T> {
+pub struct Sender<T> {
     _marker: PhantomData<T>,
 }
 
 #[derive(Debug)]
-pub struct ReceiverRole<T> {
+pub struct Receiver<T> {
     _marker: PhantomData<T>,
 }
 
-impl<T> Role for SenderRole<T> {
+impl<T> Role for Sender<T> {
     type Item = T;
+    type Opposite = Receiver<T>;
     type Input = T;
     type Output = ();
 
-    fn kind(&self) -> RoleKind {
-        RoleKind::Sender
+    fn kind() -> Kind {
+        Kind::Sender
     }
 
-    unsafe fn exchange_buffer(&self, buffer: *mut T, input: T) -> () {
+    unsafe fn interact(buffer: *mut T, input: T) -> () {
         ptr::write(buffer, input);
     }
-
-    unsafe fn exchange_counterpart(&self, buffer: *mut T, slot: &Slot<T>) {
-        slot.read_from(buffer);
-    }
-
-    unsafe fn init_slot(&self, slot: &Slot<T>, input: T) {
-        slot.write(input);
-    }
-
-    unsafe fn recover_from_slot(&self, slot: &Slot<T>) -> T {
-        slot.read()
-    }
-
-    unsafe fn consume_slot(&self, _slot: &Slot<T>) -> () {
-        // no-op
-    }
 }
 
-impl<T> Default for SenderRole<T> {
+impl<T> private::Sealed for Sender<T> {}
+
+impl<T> Default for Sender<T> {
     fn default() -> Self {
-        SenderRole {
+        Sender {
             _marker: PhantomData,
         }
     }
 }
 
-impl<T> Clone for SenderRole<T> {
+impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
-        SenderRole {
+        Sender {
             _marker: PhantomData,
         }
     }
 }
 
-impl<T> Copy for SenderRole<T> {}
+impl<T> Copy for Sender<T> {}
 
-impl<T> Role for ReceiverRole<T> {
+impl<T> Role for Receiver<T> {
     type Item = T;
+    type Opposite = Sender<T>;
     type Input = ();
     type Output = T;
 
-    fn kind(&self) -> RoleKind {
-        RoleKind::Receiver
+    fn kind() -> Kind {
+        Kind::Receiver
     }
 
-    unsafe fn exchange_buffer(&self, buffer: *mut T, _input: ()) -> T {
+    unsafe fn interact(buffer: *mut T, _input: ()) -> T {
         ptr::read(buffer)
     }
-
-    unsafe fn exchange_counterpart(&self, buffer: *mut T, slot: &Slot<T>) {
-        slot.write_to(buffer);
-    }
-
-    unsafe fn init_slot(&self, _slot: &Slot<T>, _input: ()) {
-        // no-op
-    }
-
-    unsafe fn recover_from_slot(&self, _slot: &Slot<T>) -> () {
-        // no-op
-    }
-
-    unsafe fn consume_slot(&self, slot: &Slot<T>) -> T {
-        slot.read()
-    }
 }
 
-impl<T> Default for ReceiverRole<T> {
+impl<T> private::Sealed for Receiver<T> {}
+
+impl<T> Default for Receiver<T> {
     fn default() -> Self {
-        ReceiverRole {
+        Receiver {
             _marker: PhantomData,
         }
     }
 }
 
-impl<T> Clone for ReceiverRole<T> {
+impl<T> Clone for Receiver<T> {
     fn clone(&self) -> Self {
-        ReceiverRole {
+        Receiver {
             _marker: PhantomData,
         }
     }
 }
 
-impl<T> Copy for ReceiverRole<T> {}
+impl<T> Copy for Receiver<T> {}

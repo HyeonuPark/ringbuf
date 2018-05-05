@@ -45,15 +45,8 @@ pub fn channel<S: Sequence, R: Sequence, T: Send>(
 
     let head = Arc::new(Head::new(sender, receiver));
 
-    let sender_head = SenderHead {
-        head: head.clone(),
-        role: Default::default(),
-        capacity,
-    };
-    let receiver_head = ReceiverHead {
-        head: head.clone(),
-        role: Default::default(),
-    };
+    let sender_head = SenderHead::new(head.clone(), capacity);
+    let receiver_head = ReceiverHead::new(head.clone());
 
     let buf = Buffer::new(head, capacity);
     let scheduler = Scheduler::new();
