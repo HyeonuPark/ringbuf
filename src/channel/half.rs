@@ -27,56 +27,22 @@ pub struct Half<B: BufInfo, H: HeadHalf, T: Send> where H::Role: Role<Item=T> {
 type Input<T> = <<T as HeadHalf>::Role as Role>::Input;
 type Output<T> = <<T as HeadHalf>::Role as Role>::Output;
 
-macro_rules! init_macros {
-    (
-        $bind:ident, $try_advance:ident,
-        $head:ident, $buf:ident, $cache:ident, $scheduler:ident, $seq:ident
-    ) => (
-        macro_rules! $bind {
-            ($this:expr, $input:ident) => (
-                macro_rules! input {
-                    () => ($input);
-                }
-                macro_rules! $head {
-                    () => (&$this.head);
-                }
-                macro_rules! $buf {
-                    () => (&$this.buf);
-                }
-                macro_rules! $cache {
-                    () => (&mut $this.cache);
-                }
-                macro_rules! $scheduler {
-                    () => (&mut $this.scheduler);
-                }
-                macro_rules! $seq {
-                    () => ($this.head.seq());
-                }
-            );
-        }
-        macro_rules! $try_advance {
-            ($Role:ty) => (
-                match $seq!().try_claim($cache!(), $head!()) {
-                    Some(count) => {
-                        let buffer = $buf!().get_ptr(count);
+macro_rules! try_advance {
+    ($this:expr, $input:expr, $Role:ty) => (
+        match $this.head.seq().try_claim(&mut $this.cache, &$this.head) {
+            Some(count) => {
+                let buffer = $this.buf.get_ptr(count);
+                let res = unsafe {
+                    <$Role>::interact(buffer, $input)
+                };
 
-                        let res = unsafe {
-                            <$Role>::interact(buffer, input!())
-                        };
-                        $seq!().commit($cache!(), count);
-                        $scheduler!().pop_blocked::<$Role>();
-                        Ok(res)
-                    }
-                    None => Err(input!()),
-                }
-            );
+                $this.head.seq().commit(&mut $this.cache, count);
+                $this.scheduler.pop_blocked::<$Role>();
+                Ok(res)
+            }
+            None => Err($input),
         }
     );
-}
-
-init_macros! {
-    bind, try_advance,
-    head, buf, cache, scheduler, seq
 }
 
 impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T> {
@@ -92,23 +58,23 @@ impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T>
     }
 
     pub fn try_advance(&mut self, input: Input<H>) -> Result<Output<H>, Input<H>> {
-        bind!(self, input);
-        try_advance!(H::Role)
+        try_advance!(self, input, H::Role)
     }
 
     pub fn sync_advance(&mut self, input: Input<H>) -> Output<H> {
         let mut input = input;
-        bind!(self, input);
 
         loop {
-            match try_advance!(H::Role) {
+            match try_advance!(self, input, H::Role) {
                 Ok(output) => return output,
                 Err(retry) => input = retry,
             }
 
-            if scheduler!().register::<H::Role>(Notify::sync()) {
+            if self.scheduler.register::<H::Role>(Notify::sync()) {
                 thread::park();
-                scheduler!().restore();
+                self.scheduler.restore();
+            } else {
+                self.scheduler.pop_blocked::<H::Role>();
             }
         }
     }
