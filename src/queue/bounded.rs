@@ -4,14 +4,8 @@ use std::sync::Arc;
 use buffer::Buffer;
 use sequence::{Sequence, Shared};
 
-mod head;
-mod half;
-
-#[cfg(test)]
-mod tests;
-
-use self::head::{Head, SenderHead, ReceiverHead};
-use self::half::Half;
+use super::head::{Head, SenderHead, ReceiverHead};
+use super::half::Half;
 
 #[derive(Debug)]
 pub struct Sender<S: Sequence, R: Sequence, T: Send> {
