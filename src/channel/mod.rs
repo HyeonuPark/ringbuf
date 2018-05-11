@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use sequence::{Sequence, Shared};
-use scheduler::Scheduler;
 
 mod head;
 mod half;
@@ -49,10 +48,9 @@ pub fn channel<S: Sequence, R: Sequence, T: Send>(
     let receiver_head = ReceiverHead::new(head.clone());
 
     let buf = Buffer::new(head, capacity);
-    let scheduler = Scheduler::new();
 
-    let sender_half = Half::new(buf.clone(), sender_head, sender_cache, scheduler.clone());
-    let receiver_half = Half::new(buf, receiver_head, receiver_cache, scheduler);
+    let sender_half = Half::new(buf.clone(), sender_head, sender_cache);
+    let receiver_half = Half::new(buf, receiver_head, receiver_cache);
 
     let sender = Sender {
         half: sender_half,
@@ -69,10 +67,6 @@ impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, T> {
         self.half.try_advance(msg)
             .map_err(TrySendError)
     }
-
-    pub fn sync_send(&mut self, msg: T) {
-        self.half.sync_advance(msg);
-    }
 }
 
 impl<S: Shared, R: Sequence, T: Send> Clone for Sender<S, R, T> {
@@ -87,10 +81,6 @@ impl<S: Sequence, R: Sequence, T: Send> Receiver<S, R, T> {
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         self.half.try_advance(())
             .map_err(|_| TryRecvError)
-    }
-
-    pub fn sync_recv(&mut self) -> T {
-        self.half.sync_advance(())
     }
 }
 

@@ -6,5 +6,4 @@ pub mod counter;
 pub mod sequence;
 pub mod buffer;
 pub mod role;
-pub mod scheduler;
 pub mod channel;
