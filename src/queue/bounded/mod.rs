@@ -6,7 +6,6 @@ use sequence::{Sequence, Shared};
 
 mod head;
 mod half;
-mod exchange;
 
 #[cfg(test)]
 mod tests;
@@ -24,19 +23,16 @@ pub struct Receiver<S: Sequence, R: Sequence, T: Send> {
     half: Half<Arc<Head<S, R>>, ReceiverHead<S, R, T>, T>,
 }
 
-#[derive(Debug)]
-pub struct TrySendError<T>(pub T);
+#[derive(Debug, PartialEq, Eq)]
+pub enum SendError<T> {
+    BufferFull(T),
+    Closed(T),
+}
 
-#[derive(Debug)]
-pub struct SyncSendError<T>(pub T);
+#[derive(Debug, PartialEq, Eq)]
+pub struct RecvError;
 
-#[derive(Debug)]
-pub struct TryRecvError;
-
-#[derive(Debug)]
-pub struct SyncRecvError;
-
-pub fn channel<S: Sequence, R: Sequence, T: Send>(
+pub fn queue<S: Sequence, R: Sequence, T: Send>(
     capacity: usize
 ) -> (Sender<S, R, T>, Receiver<S, R, T>) {
     let (sender, sender_cache) = S::new();
@@ -63,9 +59,20 @@ pub fn channel<S: Sequence, R: Sequence, T: Send>(
 }
 
 impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, T> {
-    pub fn try_send(&mut self, msg: T) -> Result<(), TrySendError<T>> {
-        self.half.try_advance(msg)
-            .map_err(TrySendError)
+    pub fn is_closed(&self) -> bool {
+        self.half.is_closed()
+    }
+
+    pub fn close(&mut self) {
+        self.half.close()
+    }
+
+    pub fn try_send(&mut self, msg: T) -> Result<(), SendError<T>> {
+        if self.half.is_closed() {
+            return Err(SendError::Closed(msg));
+        }
+
+        self.half.try_advance(msg).map_err(SendError::BufferFull)
     }
 }
 
@@ -78,9 +85,25 @@ impl<S: Shared, R: Sequence, T: Send> Clone for Sender<S, R, T> {
 }
 
 impl<S: Sequence, R: Sequence, T: Send> Receiver<S, R, T> {
-    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        self.half.try_advance(())
-            .map_err(|_| TryRecvError)
+    pub fn is_closed(&self) -> bool {
+        self.half.is_closed()
+    }
+
+    pub fn close(&mut self) {
+        self.half.close()
+    }
+
+    pub fn try_recv(&mut self) -> Result<Option<T>, RecvError> {
+        match self.half.try_advance(()) {
+            Ok(msg) => Ok(Some(msg)),
+            Err(()) => {
+                if self.half.is_closed() {
+                    Ok(None)
+                } else {
+                    Err(RecvError)
+                }
+            }
+        }
     }
 }
 

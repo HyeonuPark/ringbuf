@@ -35,9 +35,9 @@ impl<S: Sequence, R: Sequence> Head<S, R> {
     pub fn new(sender: S, receiver: R) -> Self {
         Head {
             sender,
-            sender_count: AtomicUsize::new(0),
+            sender_count: AtomicUsize::new(1),
             receiver,
-            receiver_count: AtomicUsize::new(0),
+            receiver_count: AtomicUsize::new(1),
             is_closed: AtomicBool::new(false),
         }
     }

@@ -1,10 +1,11 @@
 
 use std::thread;
+use std::time::Duration;
 
 use rand::{Rng, thread_rng};
 
 use sequence::{Owned, Competitive};
-use channel::channel;
+use queue::bounded;
 
 #[cfg(not(feature = "ci"))]
 const COUNT: usize = 64000;
@@ -22,7 +23,7 @@ const THREADS: usize = 4;
 
 #[test]
 fn test_spinning_spsc() {
-    let (mut tx, mut rx) = channel::<Owned, Owned, usize>(SIZE);
+    let (mut tx, mut rx) = bounded::queue::<Owned, Owned, usize>(SIZE);
 
     let handle = thread::spawn(move|| {
         for i in 0..COUNT {
@@ -37,19 +38,21 @@ fn test_spinning_spsc() {
     for i in 0..COUNT {
         loop {
             if let Ok(num) = rx.try_recv() {
-                assert_eq!(num, i);
+                assert_eq!(num, Some(i));
                 break;
             }
         }
     }
 
     handle.join().unwrap();
+    thread::sleep(Duration::from_millis(10)); // to ensure atomic closure is propagated
+    assert_eq!(rx.try_recv(), Ok(None));
 }
 
 #[cfg(not(feature = "ci"))]
 #[test]
 fn test_spinning_mpmc() {
-    let (tx, rx) = channel::<Competitive, Competitive, u64>(SIZE);
+    let (tx, rx) = bounded::queue::<Competitive, Competitive, u64>(SIZE);
 
     let senders: Vec<_> = (0..THREADS)
         .map(|_| {
@@ -83,7 +86,7 @@ fn test_spinning_mpmc() {
                 for _ in 0..COUNT {
                     loop {
                         if let Ok(num) = rx.try_recv() {
-                            acc += num;
+                            acc += num.unwrap();
                             break;
                         }
                     }
