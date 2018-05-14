@@ -16,7 +16,7 @@ pub struct Cache {
 impl Sequence for Owned {
     type Cache = Cache;
 
-    fn cache<L: Limit>(&self, limit: &L) -> Cache {
+    unsafe fn cache_unchecked<L: Limit>(&self, limit: &L) -> Cache {
         Cache {
             count: self.count(),
             limit: limit.count(),

@@ -4,17 +4,17 @@ use std::sync::Arc;
 use buffer::Buffer;
 use sequence::{Sequence, Shared};
 
-use super::head::{Head, SenderHead, ReceiverHead};
+use super::head::{Head, SenderHead, ReceiverHead, SenderHalf, ReceiverHalf};
 use super::half::Half;
 
 #[derive(Debug)]
 pub struct Sender<S: Sequence, R: Sequence, T: Send> {
-    half: Half<Arc<Head<S, R>>, SenderHead<S, R, T>, T>,
+    half: SenderHalf<S, R, T>,
 }
 
 #[derive(Debug)]
 pub struct Receiver<S: Sequence, R: Sequence, T: Send> {
-    half: Half<Arc<Head<S, R>>, ReceiverHead<S, R, T>, T>,
+    half: ReceiverHalf<S, R, T>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -37,8 +37,10 @@ pub fn queue<S: Sequence, R: Sequence, T: Send>(
 
     let buf = Buffer::new(head, capacity);
 
-    let sender_half = Half::new(buf.clone(), sender_head);
-    let receiver_half = Half::new(buf, receiver_head);
+    let (sender_half, receiver_half) = unsafe {(
+        Half::new(buf.clone(), sender_head),
+        Half::new(buf, receiver_head),
+    )};
 
     let sender = Sender {
         half: sender_half,

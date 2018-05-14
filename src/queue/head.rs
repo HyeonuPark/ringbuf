@@ -1,15 +1,13 @@
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, AtomicBool, AtomicPtr, Ordering};
-use std::{mem, ptr};
-use std::ops::Drop;
+use std::sync::atomic::{AtomicUsize, AtomicBool};
 
 use counter::Counter;
 use sequence::{Sequence, Limit};
 use buffer::BufInfo;
 use role;
 
-use super::half::HeadHalf;
+use super::half::{Half, HeadHalf};
 
 #[derive(Debug)]
 pub struct Head<S: Sequence, R: Sequence> {
@@ -18,7 +16,6 @@ pub struct Head<S: Sequence, R: Sequence> {
     receiver: R,
     receiver_count: AtomicUsize,
     is_closed: AtomicBool,
-    next: AtomicPtr<Head<S, R>>,
 }
 
 #[derive(Debug)]
@@ -34,6 +31,9 @@ pub struct ReceiverHead<S: Sequence, R: Sequence, T> {
     role: role::Receiver<T>,
 }
 
+pub type SenderHalf<S, R, T> = Half<Arc<Head<S, R>>, SenderHead<S, R, T>, T>;
+pub type ReceiverHalf<S, R, T> = Half<Arc<Head<S, R>>, ReceiverHead<S, R, T>, T>;
+
 impl<S: Sequence, R: Sequence> Head<S, R> {
     pub fn new(sender: S, receiver: R) -> Self {
         Head {
@@ -42,40 +42,6 @@ impl<S: Sequence, R: Sequence> Head<S, R> {
             receiver,
             receiver_count: AtomicUsize::new(1),
             is_closed: AtomicBool::new(false),
-            next: AtomicPtr::new(ptr::null_mut()),
-        }
-    }
-
-    pub fn get_next(&self) -> Option<Arc<Self>> {
-        let next = self.next.load(Ordering::Acquire);
-
-        if next.is_null() {
-            None
-        } else {
-            Some(unsafe { clone_arc(next) })
-        }
-    }
-
-    pub fn set_next(&self, next: Arc<Self>) -> Result<(), Arc<Self>> {
-        let next = Arc::into_raw(next) as *mut Self;
-        let prev = self.next.compare_and_swap(ptr::null_mut(), next, Ordering::Acquire);
-
-        if prev.is_null() {
-            Ok(())
-        } else {
-            Err(unsafe { clone_arc(prev) })
-        }
-    }
-}
-
-impl<S: Sequence, R: Sequence> Drop for Head<S, R> {
-    fn drop(&mut self) {
-        let next = self.next.load(Ordering::Acquire);
-
-        if !next.is_null() {
-            unsafe {
-                Arc::from_raw(next);
-            }
         }
     }
 }
@@ -168,11 +134,4 @@ impl<S: Sequence, R: Sequence, T> Clone for ReceiverHead<S, R, T> {
             role: self.role,
         }
     }
-}
-
-unsafe fn clone_arc<T>(arc_ptr: *mut T) -> Arc<T> {
-    let arc = Arc::from_raw(arc_ptr);
-    let res = arc.clone();
-    mem::forget(arc);
-    res
 }
