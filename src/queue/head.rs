@@ -104,7 +104,7 @@ impl<S: Sequence, R: Sequence, T> HeadHalf for SenderHead<S, R, T> {
         &self.head.sender
     }
 
-    fn count(&self) -> &AtomicUsize {
+    fn amount(&self) -> &AtomicUsize {
         &self.head.sender_count
     }
 
@@ -114,7 +114,7 @@ impl<S: Sequence, R: Sequence, T> HeadHalf for SenderHead<S, R, T> {
 }
 
 impl<S: Sequence, R: Sequence, T> Limit for SenderHead<S, R, T> {
-    fn limit(&self) -> Counter {
+    fn count(&self) -> Counter {
         self.head.receiver.count() + self.capacity
     }
 }
@@ -146,7 +146,7 @@ impl<S: Sequence, R: Sequence, T> HeadHalf for ReceiverHead<S, R, T> {
         &self.head.receiver
     }
 
-    fn count(&self) -> &AtomicUsize {
+    fn amount(&self) -> &AtomicUsize {
         &self.head.receiver_count
     }
 
@@ -156,7 +156,7 @@ impl<S: Sequence, R: Sequence, T> HeadHalf for ReceiverHead<S, R, T> {
 }
 
 impl<S: Sequence, R: Sequence, T> Limit for ReceiverHead<S, R, T> {
-    fn limit(&self) -> Counter {
+    fn count(&self) -> Counter {
         self.head.sender.count()
     }
 }

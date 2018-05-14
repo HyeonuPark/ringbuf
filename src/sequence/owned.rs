@@ -2,7 +2,7 @@
 use counter::{Counter, AtomicCounter};
 use sequence::{Sequence, Limit};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Owned {
     count: AtomicCounter,
 }
@@ -16,16 +16,11 @@ pub struct Cache {
 impl Sequence for Owned {
     type Cache = Cache;
 
-    fn new() -> (Self, Cache) {
-        (
-            Owned {
-                count: AtomicCounter::new(),
-            },
-            Cache {
-                count: Counter::new(0),
-                limit: Counter::new(0),
-            },
-        )
+    fn cache<L: Limit>(&self, limit: &L) -> Cache {
+        Cache {
+            count: self.count(),
+            limit: limit.count(),
+        }
     }
 
     fn count(&self) -> Counter {
@@ -36,7 +31,7 @@ impl Sequence for Owned {
         debug_assert!(cache.count <= cache.limit);
 
         if cache.count >= cache.limit {
-            let recent_limit = limit.limit();
+            let recent_limit = limit.count();
             debug_assert!(recent_limit >= cache.limit);
             cache.limit = recent_limit;
         }

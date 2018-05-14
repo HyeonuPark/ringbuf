@@ -12,7 +12,7 @@ pub trait HeadHalf: Limit + Clone {
     type Role: Role;
 
     fn seq(&self) -> &Self::Seq;
-    fn count(&self) -> &AtomicUsize;
+    fn amount(&self) -> &AtomicUsize;
     fn is_closed(&self) -> &AtomicBool;
 }
 
@@ -29,13 +29,13 @@ type Output<T> = <<T as HeadHalf>::Role as Role>::Output;
 
 impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T> {
     pub fn new(
-        buf: Buffer<B, T>, head: H, cache: <H::Seq as Sequence>::Cache
+        buf: Buffer<B, T>, head: H
     ) -> Self {
         Half {
+            cache: head.seq().cache(&head),
+            closed_cache: false.into(),
             buf,
             head,
-            cache,
-            closed_cache: false.into(),
         }
     }
 
@@ -85,12 +85,12 @@ impl<B, H, T> Clone for Half<B, H, T> where
     T: Send,
 {
     fn clone(&self) -> Self {
-        self.head.count().fetch_add(1, Ordering::Relaxed);
+        self.head.amount().fetch_add(1, Ordering::Relaxed);
 
         Half {
             buf: self.buf.clone(),
             head: self.head.clone(),
-            cache: self.head.seq().new_cache(&self.head),
+            cache: self.head.seq().cache(&self.head),
             closed_cache: self.closed_cache.clone(),
         }
     }
@@ -103,7 +103,7 @@ impl<B, H, T> Drop for Half<B, H, T> where
     T: Send,
 {
     fn drop(&mut self) {
-        if self.head.count().fetch_sub(1, Ordering::Release) == 1 {
+        if self.head.amount().fetch_sub(1, Ordering::Release) == 1 {
             self.close();
         }
     }

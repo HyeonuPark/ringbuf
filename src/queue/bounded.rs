@@ -29,9 +29,7 @@ pub struct RecvError;
 pub fn queue<S: Sequence, R: Sequence, T: Send>(
     capacity: usize
 ) -> (Sender<S, R, T>, Receiver<S, R, T>) {
-    let (sender, sender_cache) = S::new();
-    let (receiver, receiver_cache) = R::new();
-
+    let (sender, receiver) = <(S, R)>::default();
     let head = Arc::new(Head::new(sender, receiver));
 
     let sender_head = SenderHead::new(head.clone(), capacity);
@@ -39,8 +37,8 @@ pub fn queue<S: Sequence, R: Sequence, T: Send>(
 
     let buf = Buffer::new(head, capacity);
 
-    let sender_half = Half::new(buf.clone(), sender_head, sender_cache);
-    let receiver_half = Half::new(buf, receiver_head, receiver_cache);
+    let sender_half = Half::new(buf.clone(), sender_head);
+    let receiver_half = Half::new(buf, receiver_head);
 
     let sender = Sender {
         half: sender_half,

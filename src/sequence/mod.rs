@@ -9,10 +9,10 @@ pub mod competitive;
 pub use self::owned::Owned;
 pub use self::competitive::Competitive;
 
-pub trait Sequence: Sized {
+pub trait Sequence: Sized + Default {
     type Cache: Debug;
 
-    fn new() -> (Self, Self::Cache);
+    fn cache<L: Limit>(&self, limit: &L) -> Self::Cache;
     fn count(&self) -> Counter;
 
     fn try_claim<L: Limit>(&self, cache: &mut Self::Cache, limit: &L) -> Option<Counter>;
@@ -20,9 +20,7 @@ pub trait Sequence: Sized {
 }
 
 pub trait Limit {
-    fn limit(&self) -> Counter;
+    fn count(&self) -> Counter;
 }
 
-pub trait Shared: Sequence {
-    fn new_cache<L: Limit>(&self, limit: &L) -> Self::Cache;
-}
+pub unsafe trait Shared: Sequence {}

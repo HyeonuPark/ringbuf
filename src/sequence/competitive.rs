@@ -2,7 +2,7 @@
 use counter::{Counter, AtomicCounter};
 use sequence::{Sequence, Limit, Shared};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Competitive {
     count: AtomicCounter,
     claimed: AtomicCounter,
@@ -16,16 +16,10 @@ pub struct Cache {
 impl Sequence for Competitive {
     type Cache = Cache;
 
-    fn new() -> (Self, Cache) {
-        (
-            Competitive {
-                count: AtomicCounter::new(),
-                claimed: AtomicCounter::new(),
-            },
-            Cache {
-                limit: Counter::new(0),
-            },
-        )
+    fn cache<L: Limit>(&self, limit: &L) -> Cache {
+        Cache {
+            limit: limit.count(),
+        }
     }
 
     fn count(&self) -> Counter {
@@ -37,7 +31,7 @@ impl Sequence for Competitive {
 
         loop {
             if claim >= cache.limit {
-                let recent_limit = limit.limit();
+                let recent_limit = limit.count();
                 debug_assert!(recent_limit >= cache.limit);
                 cache.limit = recent_limit;
             }
@@ -62,10 +56,4 @@ impl Sequence for Competitive {
     }
 }
 
-impl Shared for Competitive {
-    fn new_cache<L: Limit>(&self, limit: &L) -> Cache {
-        Cache {
-            limit: limit.limit(),
-        }
-    }
-}
+unsafe impl Shared for Competitive {}
