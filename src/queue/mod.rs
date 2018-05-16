@@ -1,7 +1,7 @@
 
 mod head;
 mod half;
-mod state;
+mod atomic;
 mod chain;
 
 pub mod bounded;

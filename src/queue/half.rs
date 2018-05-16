@@ -28,11 +28,11 @@ type Input<T> = <<T as HeadHalf>::Role as Role>::Input;
 type Output<T> = <<T as HeadHalf>::Role as Role>::Output;
 
 impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T> {
-    pub unsafe fn new(
+    pub fn new(
         buf: Buffer<B, T>, head: H
     ) -> Self {
         Half {
-            cache: head.seq().cache_unchecked(&head),
+            cache: head.seq().cache(&head),
             closed_cache: false.into(),
             buf,
             head,

@@ -37,10 +37,8 @@ pub fn queue<S: Sequence, R: Sequence, T: Send>(
 
     let buf = Buffer::new(head, capacity);
 
-    let (sender_half, receiver_half) = unsafe {(
-        Half::new(buf.clone(), sender_head),
-        Half::new(buf, receiver_head),
-    )};
+    let sender_half = Half::new(buf.clone(), sender_head);
+    let receiver_half = Half::new(buf, receiver_head);
 
     let sender = Sender {
         half: sender_half,

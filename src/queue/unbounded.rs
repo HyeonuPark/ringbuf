@@ -77,7 +77,7 @@ impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, T> {
 
             let buf = self.chain.buf().unwrap();
             let head = SenderHead::new(buf.head().clone(), buf.capacity());
-            let half = unsafe { Half::new(buf.clone(), head) };
+            let half = Half::new(buf.clone(), head);
 
             self.half = Some(half);
         }
@@ -129,7 +129,7 @@ impl<S: Sequence, R: Sequence, T: Send> Receiver<S, R, T> {
 
             let buf = self.chain.buf().unwrap();
             let head = ReceiverHead::new(buf.head().clone());
-            let half = unsafe { Half::new(buf.clone(), head) };
+            let half = Half::new(buf.clone(), head);
 
             self.half = Some(half);
         }

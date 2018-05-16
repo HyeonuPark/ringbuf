@@ -16,7 +16,7 @@ pub struct Cache {
 impl Sequence for Competitive {
     type Cache = Cache;
 
-    unsafe fn cache_unchecked<L: Limit>(&self, limit: &L) -> Cache {
+    fn cache<L: Limit>(&self, limit: &L) -> Cache {
         Cache {
             limit: limit.count(),
         }

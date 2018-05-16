@@ -1,10 +1,13 @@
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use counter::{Counter, AtomicCounter};
 use sequence::{Sequence, Limit};
 
 #[derive(Debug, Default)]
 pub struct Owned {
     count: AtomicCounter,
+    taken: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -16,7 +19,9 @@ pub struct Cache {
 impl Sequence for Owned {
     type Cache = Cache;
 
-    unsafe fn cache_unchecked<L: Limit>(&self, limit: &L) -> Cache {
+    fn cache<L: Limit>(&self, limit: &L) -> Cache {
+        assert!(!self.taken.swap(true, Ordering::Relaxed), "Owned sequence can't be shared");
+
         Cache {
             count: self.count(),
             limit: limit.count(),

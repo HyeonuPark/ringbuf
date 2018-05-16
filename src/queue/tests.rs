@@ -49,8 +49,8 @@ fn test_spinning_bounded_spsc() {
     assert_eq!(rx.try_recv(), Ok(None));
 }
 
-#[cfg(not(feature = "ci"))]
 #[test]
+#[cfg_attr(feature = "ci", ignore)]
 fn test_spinning_bounded_mpmc() {
     let (tx, rx) = bounded::queue::<Competitive, Competitive, u64>(SIZE);
 
@@ -109,13 +109,13 @@ fn test_spinning_unbounded_spsc() {
 
     let handle = thread::spawn(move|| {
         for i in 0..COUNT {
-            println!("SEND INIT {}", i);
+            // println!("SEND INIT {}", i);
             loop {
                 if let Ok(()) = tx.try_send(i) {
                     break;
                 }
             }
-            println!("SEND DONE {}", i);
+            // println!("SEND DONE {}", i);
         }
     });
 
@@ -135,8 +135,8 @@ fn test_spinning_unbounded_spsc() {
     assert_eq!(rx.try_recv(), Ok(None));
 }
 
-#[cfg(not(feature = "ci"))]
 #[test]
+#[cfg_attr(feature = "ci", ignore)]
 fn test_spinning_unbounded_mpmc() {
     let (tx, rx) = unbounded::queue::<Competitive, Competitive, u64>();
 

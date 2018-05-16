@@ -12,8 +12,8 @@ pub use self::competitive::Competitive;
 pub trait Sequence: Sized + Default {
     type Cache: Debug;
 
-    /// Calling this more than once on non-`Shared` sequence is not safe.
-    unsafe fn cache_unchecked<L: Limit>(&self, limit: &L) -> Self::Cache;
+    /// Calling this more than once on non-`Shared` sequence can be panic.
+    fn cache<L: Limit>(&self, limit: &L) -> Self::Cache;
     fn count(&self) -> Counter;
 
     fn try_claim<L: Limit>(&self, cache: &mut Self::Cache, limit: &L) -> Option<Counter>;
@@ -24,8 +24,5 @@ pub trait Limit {
     fn count(&self) -> Counter;
 }
 
-pub unsafe trait Shared: Sequence {
-    fn cache<L: Limit>(&self, limit: &L) -> Self::Cache {
-        unsafe { self.cache_unchecked(limit) }
-    }
-}
+/// Shareable sequence.
+pub unsafe trait Shared: Sequence {}

@@ -6,7 +6,7 @@ use sequence::Sequence;
 use buffer::Buffer;
 
 use super::head::Head;
-use super::state::{Atomic, Next::*};
+use super::atomic::{Atomic, Next::*};
 
 /// Chain of buffers to provide unbounded queue.
 #[derive(Debug)]
