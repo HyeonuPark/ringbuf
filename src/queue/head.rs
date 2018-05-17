@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, AtomicBool};
 
-use counter::Counter;
+use counter::{Counter, CounterRange};
 use sequence::{Sequence, Limit};
 use buffer::BufInfo;
 use role;
@@ -47,8 +47,8 @@ impl<S: Sequence, R: Sequence> Head<S, R> {
 }
 
 impl<S: Sequence, R: Sequence> BufInfo for Arc<Head<S, R>> {
-    fn range(&self) -> (Counter, Counter) {
-        (self.receiver.count(), self.sender.count())
+    fn range(&self) -> CounterRange {
+        Counter::range(self.receiver.count(), self.sender.count())
     }
 }
 

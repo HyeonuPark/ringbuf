@@ -25,6 +25,13 @@ use std::ops;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Counter(usize);
 
+/// Same as `start..end` where both `start` and `end` are `Counter`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CounterRange {
+    pub start: Counter,
+    pub end: Counter,
+}
+
 /// Thread safe shared container for `Counter`.
 #[derive(Debug, Default)]
 pub struct AtomicCounter(AtomicUsize);
@@ -38,6 +45,27 @@ impl Counter {
     /// Create a new counter.
     pub fn new(num: usize) -> Self {
         Counter(num)
+    }
+
+    pub fn range(start: Counter, end: Counter) -> CounterRange {
+        CounterRange {
+            start,
+            end,
+        }
+    }
+}
+
+impl Iterator for CounterRange {
+    type Item = Counter;
+
+    fn next(&mut self) -> Option<Counter> {
+        if self.start == self.end {
+            None
+        } else {
+            let prev = self.start;
+            self.start = prev + 1;
+            Some(prev)
+        }
     }
 }
 
