@@ -161,7 +161,6 @@ impl<S: Sequence, R: Sequence, T: Send> Drop for Chain<S, R, T> {
 
         if live.fetch_sub(1, Ordering::Release) == 1 {
             self.close();
-            println!("Drop chain {:?}", self.kind);
         }
     }
 }

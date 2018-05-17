@@ -114,21 +114,17 @@ fn test_spinning_unbounded_spsc() {
 
     let handle = thread::spawn(move|| {
         for i in 0..COUNT {
-            // println!("SEND INIT {}", i);
             tx.try_send(i).unwrap();
-            // println!("SEND DONE {}", i);
         }
     });
 
     for i in 0..COUNT {
-        // println!("RECV INIT {}", i);
         loop {
             if let Ok(num) = rx.try_recv() {
                 assert_eq!(num, Some(i));
                 break;
             }
         }
-        // println!("RECV DONE {}", i);
     }
 
     handle.join().unwrap();
