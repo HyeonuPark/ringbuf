@@ -66,6 +66,11 @@ fn test_spinning_bounded_mpmc() {
                     acc += num;
 
                     loop {
+                        match tx.try_send(num) {
+                            Ok(()) => break,
+                            Err(bounded::SendError::Closed(_)) => panic!("Boo, never!"),
+                            Err(bounded::SendError::BufferFull(_)) => {}
+                        }
                         if let Ok(()) = tx.try_send(num) {
                             break;
                         }
@@ -110,11 +115,7 @@ fn test_spinning_unbounded_spsc() {
     let handle = thread::spawn(move|| {
         for i in 0..COUNT {
             // println!("SEND INIT {}", i);
-            loop {
-                if let Ok(()) = tx.try_send(i) {
-                    break;
-                }
-            }
+            tx.try_send(i).unwrap();
             // println!("SEND DONE {}", i);
         }
     });
@@ -131,6 +132,7 @@ fn test_spinning_unbounded_spsc() {
     }
 
     handle.join().unwrap();
+
     thread::sleep(Duration::from_millis(10)); // to ensure atomic closure is propagated
     assert_eq!(rx.try_recv(), Ok(None));
 }
@@ -150,12 +152,7 @@ fn test_spinning_unbounded_mpmc() {
                 for _ in 0..COUNT {
                     let num = rng.gen_range(0u64, 1024);
                     acc += num;
-
-                    loop {
-                        if let Ok(()) = tx.try_send(num) {
-                            break;
-                        }
-                    }
+                    tx.try_send(num).unwrap();
                 }
 
                 acc
@@ -172,7 +169,11 @@ fn test_spinning_unbounded_mpmc() {
                 for _ in 0..COUNT {
                     loop {
                         if let Ok(num) = rx.try_recv() {
-                            acc += num.unwrap();
+                            let num = match num {
+                                Some(num) => num,
+                                None => panic!("RECV FAIL: {:#?}", rx),
+                            };
+                            acc += num;
                             break;
                         }
                     }
@@ -182,6 +183,8 @@ fn test_spinning_unbounded_mpmc() {
             })
         })
         .collect();
+
+    drop((tx, rx));
 
     let tx_sum: u64 = senders.into_iter().map(|h| h.join().unwrap()).sum();
     let rx_sum: u64 = receivers.into_iter().map(|h| h.join().unwrap()).sum();

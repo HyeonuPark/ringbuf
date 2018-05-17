@@ -1,9 +1,12 @@
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::cell::Cell;
+use std::ops::Drop;
 
 use sequence::Sequence;
 use buffer::Buffer;
+use role::Kind;
 
 use super::head::Head;
 use super::atomic::{Atomic, Next::*};
@@ -12,6 +15,8 @@ use super::atomic::{Atomic, Next::*};
 #[derive(Debug)]
 pub struct Chain<S: Sequence, R: Sequence, T: Send> {
     inner: Arc<Inner<S, R, T>>,
+    kind: Kind,
+    live: Arc<LiveCount>,
     cache_closed: Cell<bool>,
 }
 
@@ -21,17 +26,37 @@ struct Inner<S: Sequence, R: Sequence, T: Send> {
     next: Atomic<Inner<S, R, T>>,
 }
 
+#[derive(Debug)]
+struct LiveCount {
+    sender: AtomicUsize,
+    receiver: AtomicUsize,
+}
+
 impl<S: Sequence, R: Sequence, T: Send> Chain<S, R, T> {
-    pub fn new() -> Self {
+    pub fn new() -> (Self, Self) {
         let inner = Arc::new(Inner {
             buf: None,
             next: Atomic::new(),
         });
+        let live = Arc::new(LiveCount {
+            sender: AtomicUsize::new(1),
+            receiver: AtomicUsize::new(1),
+        });
 
-        Chain {
-            inner,
+        let sender = Chain {
+            inner: inner.clone(),
+            kind: Kind::Sender,
+            live: live.clone(),
             cache_closed: false.into(),
-        }
+        };
+        let receiver = Chain {
+            inner,
+            kind: Kind::Receiver,
+            live,
+            cache_closed: false.into(),
+        };
+
+        (sender, receiver)
     }
 
     pub fn is_closed(&self) -> bool {
@@ -111,9 +136,32 @@ impl<S: Sequence, R: Sequence, T: Send> Chain<S, R, T> {
 
 impl<S: Sequence, R: Sequence, T: Send> Clone for Chain<S, R, T> {
     fn clone(&self) -> Self {
+        let live = match self.kind {
+            Kind::Sender => &self.live.sender,
+            Kind::Receiver => &self.live.receiver,
+        };
+
+        live.fetch_add(1, Ordering::Relaxed);
+
         Chain {
             inner: self.inner.clone(),
+            kind: self.kind,
+            live: self.live.clone(),
             cache_closed: self.cache_closed.clone(),
+        }
+    }
+}
+
+impl<S: Sequence, R: Sequence, T: Send> Drop for Chain<S, R, T> {
+    fn drop(&mut self) {
+        let live = match self.kind {
+            Kind::Sender => &self.live.sender,
+            Kind::Receiver => &self.live.receiver,
+        };
+
+        if live.fetch_sub(1, Ordering::Release) == 1 {
+            self.close();
+            println!("Drop chain {:?}", self.kind);
         }
     }
 }
