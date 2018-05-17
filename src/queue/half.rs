@@ -31,6 +31,8 @@ impl<B: BufInfo, H: HeadHalf, T: Send> Half<B, H, T> where H::Role: Role<Item=T>
     pub fn new(
         buf: Buffer<B, T>, head: H
     ) -> Self {
+        head.amount().fetch_add(1, Ordering::Release);
+
         Half {
             cache: head.seq().cache(&head),
             closed_cache: false.into(),
@@ -103,8 +105,12 @@ impl<B, H, T> Drop for Half<B, H, T> where
     T: Send,
 {
     fn drop(&mut self) {
-        if self.head.amount().fetch_sub(1, Ordering::Release) == 1 {
-            self.close();
+        let ref_count = self.head.amount().fetch_sub(1, Ordering::Release);
+
+        match ref_count {
+            1 => self.close(),
+            0 => panic!("RefCount is overflowed. Really?!"),
+            _ => {}
         }
     }
 }
