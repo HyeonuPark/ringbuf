@@ -60,11 +60,15 @@ impl<H: BufInfo, T> Buffer<H, T> {
     }
 }
 
-impl<H: BufInfo, T> Drop for Buffer<H, T> {
+impl<H: BufInfo, T> Drop for Shared<H, T> {
     fn drop(&mut self) {
-        for count in self.head().range() {
+        let mask = self.body.capacity() - 1;
+        let elems = self.body.as_mut_ptr();
+
+        for count in self.head.range() {
             unsafe {
-                ptr::drop_in_place(self.get_ptr(count));
+                let index = (count & mask) as isize;
+                ptr::drop_in_place(elems.offset(index));
             }
         }
     }

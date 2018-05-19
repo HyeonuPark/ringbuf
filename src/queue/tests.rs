@@ -187,3 +187,42 @@ fn test_spinning_unbounded_mpmc() {
 
     assert_eq!(tx_sum, rx_sum);
 }
+
+#[test]
+fn test_drop_unsent() {
+    use std::ops::Drop;
+    use std::cell::Cell;
+    use std::mem::forget;
+
+    thread_local! {
+        static DROP_COUNT: Cell<usize> = Cell::new(0);
+    }
+
+    #[derive(Debug)]
+    struct LoudDrop(usize);
+
+    impl Drop for LoudDrop {
+        fn drop(&mut self) {
+            DROP_COUNT.with(|count| count.set(count.get() + 1));
+        }
+    }
+
+    DROP_COUNT.with(|count| count.set(0));
+
+    let sent = 77;
+    let received = 18;
+
+    let (mut tx, mut rx) = bounded::queue::<Owned, Owned, LoudDrop>(128);
+
+    for _ in 0..sent {
+        tx.try_send(LoudDrop(0)).unwrap();
+    }
+
+    for _ in 0..received {
+        forget(rx.try_recv().unwrap());
+    }
+
+    drop((tx, rx));
+
+    assert_eq!(sent - received, DROP_COUNT.with(|count| count.get()));
+}
