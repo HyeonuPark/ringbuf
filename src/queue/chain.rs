@@ -4,12 +4,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::cell::Cell;
 use std::ops::Drop;
 
+use atomic::{Atomic, State::*};
 use sequence::Sequence;
 use buffer::Buffer;
 use role::Kind;
 
 use super::head::Head;
-use super::atomic::{Atomic, Next::*};
 
 /// Chain of buffers to provide unbounded queue.
 #[derive(Debug)]
