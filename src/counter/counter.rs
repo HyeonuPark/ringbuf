@@ -37,8 +37,9 @@ pub struct CounterRange {
 }
 
 pub const COUNTER_VALID_RANGE: usize = 1 << (WORD - 3);
+const COUNTER_FULL_RANGE: isize = 1 << (WORD - 1);
 
-const WORD: usize = ::std::mem::size_of::<usize>();
+const WORD: usize = ::std::mem::size_of::<usize>() * 8;
 const MSB: usize = 0b11 << (WORD - 2);
 
 fn msb_pp(value: Counter) -> bool {
@@ -49,13 +50,25 @@ fn msb_nn(value: Counter) -> bool {
     value.0 & MSB == 0
 }
 
+#[cfg(test)]
+#[test]
+fn test_counter_utils() {
+    assert!(msb_pp(Counter(!0)));
+    assert!(!msb_nn(Counter(!0)));
+    assert!(!msb_pp(Counter(0)));
+    assert!(msb_nn(Counter(0)));
+
+    assert_ne!(COUNTER_VALID_RANGE << 2, 0);
+    assert_eq!(COUNTER_VALID_RANGE << 3, 0);
+}
+
 impl Counter {
     /// Create new counter initialized with given value.
     pub fn new(init: usize) -> Self {
         Counter(init << 1)
     }
 
-    /// Create a range of counter for iteration.
+    /// Create a range of counters for iteration.
     pub fn range(start: Counter, end: Counter) -> CounterRange {
         CounterRange {
             start,
@@ -94,12 +107,13 @@ impl ops::Sub<Self> for Counter {
     type Output = isize;
 
     fn sub(self, rhs: Self) -> isize {
-        if msb_nn(self) && msb_pp(rhs) {
-            rhs.0.wrapping_sub(self.0) as isize
-        } else if msb_pp(self) && msb_nn(rhs) {
-            - (rhs.0.wrapping_sub(self.0) as isize)
+        let this = (self.0 >> 1) as isize;
+        let that = (rhs.0 >> 1) as isize;
+
+        if (msb_nn(self) && msb_pp(rhs)) || (msb_pp(self) && msb_nn(rhs)) {
+            this.wrapping_sub(that).wrapping_add(COUNTER_FULL_RANGE)
         } else {
-            self.0.wrapping_sub(rhs.0) as isize
+            this - that
         }
     }
 }

@@ -21,7 +21,7 @@ fn test_compare_counters() {
 
 #[test]
 fn test_compare_overflowed_counters() {
-    const STEP: usize = (!0 >> 1) & !(!0 >> 2); // 0b01000..000
+    const STEP: usize = COUNTER_VALID_RANGE;
 
     let step0 = Counter::new(0);
     let step1 = step0 + STEP;
@@ -37,6 +37,11 @@ fn test_compare_overflowed_counters() {
     assert_eq!(step2 - step1, STEP as isize);
     assert_eq!(step3 - step2, STEP as isize);
     assert_eq!(step0 - step3, STEP as isize);
+
+    assert_eq!(step0 - step1, -(STEP as isize));
+    assert_eq!(step1 - step2, -(STEP as isize));
+    assert_eq!(step2 - step3, -(STEP as isize));
+    assert_eq!(step3 - step0, -(STEP as isize));
 
     assert!(step0 < step0 + 1);
     assert!(step1 < step1 + 1);
