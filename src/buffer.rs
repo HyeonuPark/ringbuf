@@ -26,6 +26,10 @@ struct Inner<H: BufRange, T> {
 unsafe impl<H: BufRange, T: Send> Send for Buffer<H, T> {}
 unsafe impl<H: BufRange, T: Send> Sync for Buffer<H, T> {}
 
+fn index(count: Counter, mask: usize) -> isize {
+    (count & mask) as isize
+}
+
 impl<H: BufRange, T> Buffer<H, T> {
     pub fn new(head: H, capacity: usize) -> Self {
         assert!(capacity.is_power_of_two(), "Capacity should be power of 2");
@@ -57,9 +61,8 @@ impl<H: BufRange, T> Buffer<H, T> {
     }
 
     pub fn get(&self, count: Counter) -> *mut T {
-        let index = (count & self.mask) as isize;
         unsafe {
-            self.ptr.offset(index)
+            self.ptr.offset(index(count, self.mask))
         }
     }
 }
@@ -70,9 +73,8 @@ impl<H: BufRange, T> Drop for Inner<H, T> {
         let mask = self.storage.capacity() - 1;
 
         for count in self.head.range() {
-            let index = (count & mask) as isize;
             unsafe {
-                ptr::drop_in_place(elems.offset(index));
+                ptr::drop_in_place(elems.offset(index(count, mask)));
             }
         }
     }
@@ -111,8 +113,7 @@ impl<'a, H: BufRange + fmt::Debug, T: fmt::Debug> fmt::Debug for PrintContents<'
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_list()
             .entries(self.0.head().range().map(|count| {
-                let index = (count & self.0.mask) as isize;
-                unsafe { &*self.0.ptr.offset(index) }
+                unsafe { &*self.0.ptr.offset(index(count, self.0.mask)) }
             }))
             .finish()
     }
