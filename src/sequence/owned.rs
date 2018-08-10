@@ -16,15 +16,15 @@ pub struct Cache {
 impl Sequence for Owned {
     type Cache = Cache;
 
-    fn cache<L: Limit>(&self, limit: &L) -> Result<Cache, Closed> {
-        Ok(Cache {
-            count: self.count()?,
+    fn cache<L: Limit>(&self, limit: &L) -> Option<Cache> {
+        self.count.fetch().ok().map(|count| Cache {
+            count,
             limit: limit.count(),
         })
     }
 
-    fn count(&self) -> Result<Counter, Closed> {
-        self.count.fetch().ok_or(Closed)
+    fn counter(&self) -> &AtomicCounter {
+        &self.count
     }
 
     fn claim<L: Limit>(&self, cache: &mut Cache, limit: &L) -> Option<Counter> {

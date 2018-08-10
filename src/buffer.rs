@@ -30,11 +30,17 @@ fn index(count: Counter, mask: usize) -> isize {
     (count & mask) as isize
 }
 
+/// Buffer capacity is limited to half of valid counter range.
+/// Another half is reserved to safely handle overclaimed counters.
+///
+/// But well, even on 32bit OS `Buffer<_, usize>` can takes 1 GiB of memory. Isn't it enough?
+const MAX_BUF_CAPACITY: usize = COUNTER_VALID_RANGE / 2;
+
 impl<H: BufRange, T> Buffer<H, T> {
     pub fn new(head: H, capacity: usize) -> Self {
         assert!(capacity.is_power_of_two(), "Capacity should be power of 2");
         assert!(capacity < COUNTER_VALID_RANGE,
-            "Capacity should be lower than the maximum range of `Counter` type");
+            "Capacity should be lower or equal than {:#X}", MAX_BUF_CAPACITY);
 
         let mut storage = Vec::with_capacity(capacity);
         let ptr = storage.as_mut_ptr();
