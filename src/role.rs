@@ -10,12 +10,12 @@ pub trait Role: private::Sealed {
     unsafe fn interact(target: *mut Self::Item, input: Self::Input) -> Self::Output;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct Send<T> {
     _marker: PhantomData<T>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct Receive<T> {
     _marker: PhantomData<T>,
 }
@@ -30,8 +30,6 @@ impl<T> Role for Send<T> {
     }
 }
 
-impl<T> private::Sealed for Send<T> {}
-
 impl<T> Role for Receive<T> {
     type Item = T;
     type Input = ();
@@ -42,6 +40,7 @@ impl<T> Role for Receive<T> {
     }
 }
 
+impl<T> private::Sealed for Send<T> {}
 impl<T> private::Sealed for Receive<T> {}
 
 mod private {

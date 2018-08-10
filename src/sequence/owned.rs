@@ -1,10 +1,13 @@
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use counter::{Counter, AtomicCounter};
 use sequence::{Sequence, Limit, Closed};
 
 #[derive(Debug, Default)]
 pub struct Owned {
     count: AtomicCounter,
+    has_cache: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -17,6 +20,11 @@ impl Sequence for Owned {
     type Cache = Cache;
 
     fn cache<L: Limit>(&self, limit: &L) -> Option<Cache> {
+        // Owned sequence can have up to single cache
+        if self.has_cache.fetch_or(true, Ordering::Release) {
+            return None;
+        }
+
         self.count.fetch().ok().map(|count| Cache {
             count,
             limit: limit.count(),

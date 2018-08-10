@@ -1,6 +1,5 @@
 
 use std::fmt;
-use std::sync::atomic::AtomicUsize;
 
 use counter::{Counter, AtomicCounter};
 
@@ -10,7 +9,7 @@ pub mod shared;
 #[derive(Debug)]
 pub struct Closed;
 
-pub(crate) trait Sequence: Default {
+pub trait Sequence: Default {
     type Cache: fmt::Debug;
 
     fn cache<L: Limit>(&self, limit: &L) -> Option<Self::Cache>;
@@ -18,12 +17,17 @@ pub(crate) trait Sequence: Default {
 
     fn claim<L: Limit>(&self, cache: &mut Self::Cache, limit: &L) -> Option<Counter>;
     fn commit(&self, cache: &mut Self::Cache, count: Counter) -> Result<(), Closed>;
+
+    fn fetch_last(&self) -> Counter {
+        match self.counter().fetch() {
+            Ok(count) => count,
+            Err(count) => count,
+        }
+    }
 }
 
-/// For types `T: Sequence + !MultiCache`, calling `Sequence::cache()` more than once can panic.
-pub(crate) trait MultiCache: Sequence {
-    fn cache_counter(&self) -> &AtomicUsize;
-}
+/// Sequences that can have more than one caches at the same time.
+pub trait MultiCache: Sequence {}
 
 pub trait Limit {
     fn count(&self) -> Counter;

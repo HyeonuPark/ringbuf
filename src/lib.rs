@@ -8,3 +8,4 @@ pub mod buffer;
 pub mod role;
 
 pub mod sequence;
+pub mod queue;

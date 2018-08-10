@@ -1,5 +1,5 @@
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 
 use counter::{Counter, AtomicCounter};
 use sequence::{Sequence, Limit, MultiCache, Closed};
@@ -8,7 +8,6 @@ use sequence::{Sequence, Limit, MultiCache, Closed};
 pub struct Shared {
     claimed: AtomicCounter,
     count: AtomicCounter,
-    caches: AtomicUsize,
 }
 
 #[derive(Debug)]
@@ -16,11 +15,7 @@ pub struct Cache {
     limit: Counter,
 }
 
-impl MultiCache for Shared {
-    fn cache_counter(&self) -> &AtomicUsize {
-        &self.caches
-    }
-}
+impl MultiCache for Shared {}
 
 impl Sequence for Shared {
     type Cache = Cache;
