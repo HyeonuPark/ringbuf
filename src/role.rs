@@ -10,6 +10,12 @@ pub trait Role: private::Sealed {
     unsafe fn interact(target: *mut Self::Item, input: Self::Input) -> Self::Output;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Send,
+    Receive,
+}
+
 #[derive(Debug)]
 pub struct Send<T> {
     _marker: PhantomData<T>,

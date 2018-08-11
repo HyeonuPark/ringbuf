@@ -2,7 +2,7 @@
 use std::sync::atomic::Ordering;
 
 use counter::{Counter, AtomicCounter};
-use sequence::{Sequence, Limit, MultiCache, Closed};
+use sequence::{Sequence, Limit, MultiCache, CacheError, CommitError};
 
 #[derive(Debug, Default)]
 pub struct Shared {
@@ -20,10 +20,13 @@ impl MultiCache for Shared {}
 impl Sequence for Shared {
     type Cache = Cache;
 
-    fn cache<L: Limit>(&self, limit: &L) -> Option<Cache> {
-        self.count.fetch().ok().map(|_| Cache {
-            limit: limit.count(),
-        })
+    fn cache<L: Limit>(&self, limit: &L) -> Result<Cache, CacheError> {
+        match self.count.fetch() {
+            Ok(_) => Ok(Cache {
+                limit: limit.count(),
+            }),
+            Err(_) => Err(CacheError::SeqClosed,)
+        }
     }
 
     fn counter(&self) -> &AtomicCounter {
@@ -58,12 +61,12 @@ impl Sequence for Shared {
         }
     }
 
-    fn commit(&self, _cache: &mut Cache, count: Counter) -> Result<(), Closed> {
+    fn commit(&self, _cache: &mut Cache, count: Counter) -> Result<(), CommitError> {
         loop {
             match self.count.comp_swap(count, count + 1, Ordering::AcqRel) {
                 Ok(()) => return Ok(()),
                 Err(Some(_)) => continue, // Other thread modified it. Retry
-                Err(None) => return Err(Closed), // Sequence closed.
+                Err(None) => return Err(CommitError), // Sequence closed.
             }
         }
     }

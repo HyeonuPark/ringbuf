@@ -2,7 +2,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use counter::{Counter, AtomicCounter};
-use sequence::{Sequence, Limit, Closed};
+use sequence::{Sequence, Limit, CacheError, CommitError};
 
 #[derive(Debug, Default)]
 pub struct Owned {
@@ -19,16 +19,19 @@ pub struct Cache {
 impl Sequence for Owned {
     type Cache = Cache;
 
-    fn cache<L: Limit>(&self, limit: &L) -> Option<Cache> {
+    fn cache<L: Limit>(&self, limit: &L) -> Result<Cache, CacheError> {
         // Owned sequence can have up to single cache
         if self.has_cache.fetch_or(true, Ordering::Release) {
-            return None;
+            return Err(CacheError::NotAvailable);
         }
 
-        self.count.fetch().ok().map(|count| Cache {
-            count,
-            limit: limit.count(),
-        })
+        match self.count.fetch() {
+            Ok(count) => Ok(Cache {
+                count,
+                limit: limit.count(),
+            }),
+            Err(_) => Err(CacheError::SeqClosed,)
+        }
     }
 
     fn counter(&self) -> &AtomicCounter {
@@ -53,9 +56,9 @@ impl Sequence for Owned {
         }
     }
 
-    fn commit(&self, cache: &mut Cache, count: Counter) -> Result<(), Closed> {
+    fn commit(&self, cache: &mut Cache, count: Counter) -> Result<(), CommitError> {
         match self.count.incr() {
-            None => Err(Closed),
+            None => Err(CommitError),
             Some(prev) => {
                 debug_assert_eq!(prev, count);
                 debug_assert_eq!(cache.count, prev + 1);

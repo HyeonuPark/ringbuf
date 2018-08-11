@@ -7,7 +7,7 @@ use std::mem::{transmute_copy, ManuallyDrop};
 use role::Role;
 use counter::COUNTER_VALID_RANGE;
 use buffer::{Buffer, BufRange};
-use sequence::{Sequence, Limit, Closed};
+use sequence::{Sequence, Limit, CacheError, CommitError};
 
 pub(crate) trait HeadHalf: Limit + Clone {
     type Seq: Sequence;
@@ -41,12 +41,12 @@ impl<B, H, T> Half<B, H, T> where
     H: HeadHalf,
     H::Role: Role<Item=T>,
 {
-    pub fn new(buf: Buffer<B, T>, head: H) -> Option<Self> {
+    pub fn new(buf: Buffer<B, T>, head: H) -> Result<Self, CacheError> {
         let ref_count = head.amount().fetch_add(1, Ordering::Release);
         assert!(ref_count <= MAX_HALF_COUNT,
             "Too many senders or receivers are created for this channel");
 
-        Some(Half {
+        Ok(Half {
             cache: head.seq().cache(&head)?,
             closed_cache: false.into(),
             buf,
@@ -55,7 +55,7 @@ impl<B, H, T> Half<B, H, T> where
     }
 
     pub fn try_clone(&self) -> Option<Self> {
-        Half::new(self.buf.clone(), self.head.clone())
+        Half::new(self.buf.clone(), self.head.clone()).ok()
     }
 
     pub fn is_closed(&self) -> bool {
@@ -103,7 +103,7 @@ impl<B, H, T> Half<B, H, T> where
 
                 match self.head.seq().commit(&mut self.cache, count) {
                     Ok(()) => Ok(res),
-                    Err(Closed) => Err(ManuallyDrop::into_inner(backup)),
+                    Err(CommitError) => Err(ManuallyDrop::into_inner(backup)),
                 }
             }
         }
