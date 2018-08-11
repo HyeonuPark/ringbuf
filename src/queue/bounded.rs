@@ -2,8 +2,8 @@
 use sequence::{Sequence, MultiCache};
 use buffer::Buffer;
 
-use super::half::Half;
-use super::head::{Head, SenderHead, SenderHalf, ReceiverHead, ReceiverHalf};
+use queue::half::Half;
+use queue::head::{Head, SenderHead, SenderHalf, ReceiverHead, ReceiverHalf};
 
 #[derive(Debug)]
 pub struct Sender<S: Sequence, R: Sequence, T: Send> {
@@ -27,8 +27,7 @@ pub struct ReceiveError;
 pub fn queue<S, R, T>(capacity: usize) -> (Sender<S, R, T>, Receiver<S, R, T>) where
     S: Sequence, R: Sequence, T: Send
 {
-    let (sender, receiver) = <(S, R)>::default();
-    let head = Head::new(sender, receiver);
+    let head = Head::new(S::default(), R::default());
 
     let sender = SenderHead::new(head.clone(), capacity);
     let receiver = ReceiverHead::new(head.clone());
