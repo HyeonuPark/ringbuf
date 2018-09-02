@@ -56,7 +56,7 @@ impl<S: Sequence, R: Sequence> BufRange for Arc<Head<S, R>> {
         let sender_last = self.sender.fetch_last();
         let receiver_last = self.receiver.fetch_last();
 
-        Counter::range(sender_last, receiver_last)
+        Counter::range(receiver_last, sender_last)
     }
 }
 
