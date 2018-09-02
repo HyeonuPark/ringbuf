@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicUsize;
 use std::marker::PhantomData;
 
 use role;
-use counter::{Counter, CounterRange};
+use counter::{Counter, CounterRange, AtomicCounter};
 use sequence::{Sequence, Limit};
 use buffer::BufRange;
 
@@ -45,6 +45,12 @@ impl<S: Sequence, R: Sequence> Head<S, R> {
     }
 }
 
+impl<S: Sequence, R: Sequence> Head<S, R> {
+    pub fn close(&self) {
+        self.sender.counter().close();
+    }
+}
+
 impl<S: Sequence, R: Sequence> BufRange for Arc<Head<S, R>> {
     fn range(&self) -> CounterRange {
         let sender_last = self.sender.fetch_last();
@@ -74,6 +80,10 @@ impl<S: Sequence, R: Sequence, T> HeadHalf for SenderHead<S, R, T> {
 
     fn amount(&self) -> &AtomicUsize {
         &self.head.sender_count
+    }
+
+    fn close_counter(&self) -> &AtomicCounter {
+        self.head.sender.counter()
     }
 }
 
@@ -112,6 +122,10 @@ impl<S: Sequence, R: Sequence, T> HeadHalf for ReceiverHead<S, R, T> {
 
     fn amount(&self) -> &AtomicUsize {
         &self.head.receiver_count
+    }
+
+    fn close_counter(&self) -> &AtomicCounter {
+        self.head.sender.counter()
     }
 }
 

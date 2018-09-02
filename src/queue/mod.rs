@@ -1,4 +1,5 @@
 
+pub(crate) mod atomic;
 pub(crate) mod head;
 pub(crate) mod half;
 pub(crate) mod chain;

@@ -5,7 +5,7 @@ use std::ops::Drop;
 use std::mem::{transmute_copy, ManuallyDrop};
 
 use role::Role;
-use counter::COUNTER_VALID_RANGE;
+use counter::{AtomicCounter, COUNTER_VALID_RANGE};
 use buffer::{Buffer, BufRange};
 use sequence::{Sequence, Limit, CacheError, CommitError};
 
@@ -15,6 +15,7 @@ pub(crate) trait HeadHalf: Limit + Clone {
 
     fn seq(&self) -> &Self::Seq;
     fn amount(&self) -> &AtomicUsize;
+    fn close_counter(&self) -> &AtomicCounter;
 }
 
 #[derive(Debug)]
@@ -27,6 +28,21 @@ pub(crate) struct Half<B, H, T> where
     head: H,
     cache: <H::Seq as Sequence>::Cache,
     closed_cache: Cell<bool>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AdvanceError<T> {
+    BufferFull(T),
+    Closed(T),
+}
+
+impl<T> AdvanceError<T> {
+    pub fn into_inner(self) -> T {
+        match self {
+            AdvanceError::BufferFull(v) => v,
+            AdvanceError::Closed(v) => v,
+        }
+    }
 }
 
 type Input<H> = <<H as HeadHalf>::Role as Role>::Input;
@@ -63,7 +79,7 @@ impl<B, H, T> Half<B, H, T> where
             return true;
         }
 
-        if self.head.seq().counter().fetch().is_err() {
+        if self.head.close_counter().fetch().is_err() {
             self.closed_cache.set(true);
             return true;
         }
@@ -77,7 +93,7 @@ impl<B, H, T> Half<B, H, T> where
         }
 
         self.closed_cache.set(true);
-        self.head.seq().counter().close();
+        self.head.close_counter().close();
     }
 }
 
@@ -87,13 +103,19 @@ impl<B, H, T> Half<B, H, T> where
     H::Role: Role<Item=T>,
     T: Send,
 {
-    pub fn try_advance(&mut self, input: Input<H>) -> Result<Output<H>, Input<H>> {
+    pub fn try_advance(&mut self, input: Input<H>) -> Result<Output<H>, AdvanceError<Input<H>>> {
         if self.closed_cache.get() {
-            return Err(input);
+            return Err(AdvanceError::Closed(input));
         }
 
         match self.head.seq().claim(&mut self.cache, &self.head) {
-            None => Err(input),
+            None => {
+                if self.head.close_counter().fetch().is_err() {
+                    Err(AdvanceError::Closed(input))
+                } else {
+                    Err(AdvanceError::BufferFull(input))
+                }
+            }
             Some(count) => {
                 let buffer = self.buf.get(count);
                 let (backup, res) = unsafe {(
@@ -103,7 +125,11 @@ impl<B, H, T> Half<B, H, T> where
 
                 match self.head.seq().commit(&mut self.cache, count) {
                     Ok(()) => Ok(res),
-                    Err(CommitError) => Err(ManuallyDrop::into_inner(backup)),
+                    Err(CommitError) => {
+                        self.closed_cache.set(true);
+                        let input = ManuallyDrop::into_inner(backup);
+                        Err(AdvanceError::Closed(input))
+                    }
                 }
             }
         }

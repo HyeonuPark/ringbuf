@@ -25,7 +25,7 @@ impl Sequence for Shared {
             Ok(_) => Ok(Cache {
                 limit: limit.count(),
             }),
-            Err(_) => Err(CacheError::SeqClosed,)
+            Err(_) => Err(CacheError::SeqClosed)
         }
     }
 

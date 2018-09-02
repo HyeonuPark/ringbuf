@@ -9,8 +9,7 @@ use buffer::Buffer;
 use sequence::Sequence;
 
 use queue::head::Head;
-
-use self::atomic::{AtomicArc, AtomicState::{Empty, Closed, Holds}};
+use queue::atomic::{AtomicArc, AtomicState::{Empty, Closed, Holds}};
 
 #[derive(Debug)]
 pub(crate) struct Chain<S, R, T> where
@@ -18,7 +17,7 @@ pub(crate) struct Chain<S, R, T> where
     R: Sequence,
 {
     inner: Arc<Inner<S, R, T>>,
-    live: Arc<LiveCount>,
+    live: Arc<AtomicUsize>,
     kind: role::Kind,
     cache_closed: Cell<bool>,
 }
@@ -29,31 +28,21 @@ struct Inner<S: Sequence, R: Sequence, T> {
     next: AtomicArc<Inner<S, R, T>>,
 }
 
-#[derive(Debug)]
-struct LiveCount {
-    sender: AtomicUsize,
-    receiver: AtomicUsize,
-}
-
 pub(crate) fn pair<S: Sequence, R: Sequence, T>() -> (Chain<S, R, T>, Chain<S, R, T>) {
     let inner = Arc::new(Inner {
         buf: None,
         next: AtomicArc::new(),
     });
-    let live = Arc::new(LiveCount {
-        sender: 1.into(),
-        receiver: 1.into(),
-    });
 
     let sender = Chain {
         inner: inner.clone(),
-        live: live.clone(),
+        live: Arc::new(1.into()),
         kind: Kind::Send,
         cache_closed: false.into(),
     };
     let receiver = Chain {
         inner,
-        live,
+        live: Arc::new(1.into()),
         kind: Kind::Receive,
         cache_closed: false.into(),
     };
@@ -91,9 +80,13 @@ impl<S: Sequence, R: Sequence, T> Chain<S, R, T> {
 
         loop {
             match inner.next.close() {
-                Empty | Closed => return,
+                Empty | Closed => break,
                 Holds(next) => inner = next,
             }
+        }
+
+        if let Some(buf) = &inner.buf {
+            buf.head().close();
         }
     }
 
@@ -137,12 +130,11 @@ impl<S: Sequence, R: Sequence, T> Chain<S, R, T> {
 
 impl<S: Sequence, R: Sequence, T> Clone for Chain<S, R, T> {
     fn clone(&self) -> Self {
-        let live = match self.kind {
-            Kind::Send => &self.live.sender,
-            Kind::Receive => &self.live.receiver,
-        };
+        let old_refcount = self.live.fetch_add(1, Ordering::Relaxed);
 
-        live.fetch_add(1, Ordering::Relaxed);
+        if old_refcount > ::std::isize::MAX as usize {
+            ::std::process::abort();
+        }
 
         Chain {
             inner: self.inner.clone(),
@@ -155,87 +147,12 @@ impl<S: Sequence, R: Sequence, T> Clone for Chain<S, R, T> {
 
 impl<S: Sequence, R: Sequence, T> Drop for Chain<S, R, T> {
     fn drop(&mut self) {
-        let live = match self.kind {
-            Kind::Send => &self.live.sender,
-            Kind::Receive => &self.live.receiver,
-        };
-
-        if live.fetch_sub(1, Ordering::Release) == 1 {
+        let live_count = self.live.fetch_sub(1, Ordering::Release);
+        if live_count == 1 {
             self.close();
-        }
-    }
-}
-
-mod atomic {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicPtr, Ordering};
-    use std::ptr::{self, NonNull};
-    use std::mem;
-
-    #[derive(Debug)]
-    pub struct AtomicArc<T> {
-        ptr: AtomicPtr<T>,
-    }
-
-    #[derive(Debug)]
-    pub enum AtomicState<T> {
-        Empty,
-        Closed,
-        Holds(Arc<T>),
-    }
-
-    fn get_state<T>(raw: *mut T) -> AtomicState<T> {
-        match NonNull::new(raw) {
-            None => AtomicState::Empty,
-            Some(non_null) => {
-                if non_null == NonNull::dangling() {
-                    AtomicState::Closed
-                } else {
-                    let arc = unsafe { Arc::from_raw(non_null.as_ptr()) };
-                    mem::forget(arc.clone());
-                    AtomicState::Holds(arc)
-                }
-            }
-        }
-    }
-
-    impl<T> AtomicArc<T> {
-        pub fn new() -> Self {
-            AtomicArc {
-                ptr: AtomicPtr::new(ptr::null_mut()),
-            }
-        }
-
-        /// Get current state.
-        pub fn fetch(&self) -> AtomicState<T> {
-            let inner = self.ptr.load(Ordering::Acquire);
-            get_state(inner)
-        }
-
-        /// Initialize with given value if empty. Returns previous state.
-        pub fn init(&self, value: Arc<T>) -> AtomicState<T> {
-            let value = Arc::into_raw(value) as *mut T;
-            let prev = self.ptr.compare_and_swap(ptr::null_mut(), value, Ordering::AcqRel);
-            let state = get_state(prev);
-
-            match state {
-                AtomicState::Empty => {}
-                _ => {
-                    // value is not consumed so drop it
-                    drop(unsafe {
-                        Arc::from_raw(value)
-                    });
-                }
-            }
-
-            state
-        }
-
-        /// Close if empty. Returns previous state.
-        pub fn close(&self) -> AtomicState<T> {
-            let dangling = NonNull::dangling().as_ptr();
-            let prev = self.ptr.compare_and_swap(ptr::null_mut(), dangling, Ordering::AcqRel);
-            get_state(prev)
+            println!("Closed on drop!");
+        } else {
+            println!("Not closed on drop! live_count: {}", live_count);
         }
     }
 }
