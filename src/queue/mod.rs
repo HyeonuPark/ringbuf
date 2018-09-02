@@ -1,11 +1,10 @@
 
-pub(crate) mod atomic;
 pub(crate) mod head;
 pub(crate) mod half;
-pub(crate) mod chain;
+pub(crate) mod bounded;
 
-pub mod bounded;
-pub mod unbounded;
+pub use self::bounded::{Sender, Receiver, SendError, RecvError};
+pub use self::bounded::queue as create;
 
 #[cfg(test)]
 mod tests;
