@@ -6,12 +6,12 @@ use queue::half::{Half, AdvanceError};
 use queue::head::{Head, SenderHead, SenderHalf, ReceiverHead, ReceiverHalf};
 
 #[derive(Debug)]
-pub struct Sender<S: Sequence, R: Sequence, T: Send> {
+pub struct Sender<S: Sequence, R: Sequence, T> {
     half: Option<SenderHalf<S, R, T>>,
 }
 
 #[derive(Debug)]
-pub struct Receiver<S: Sequence, R: Sequence, T: Send> {
+pub struct Receiver<S: Sequence, R: Sequence, T> {
     half: Option<ReceiverHalf<S, R, T>>,
 }
 
@@ -34,7 +34,7 @@ impl<T> From<AdvanceError<T>> for SendError<T> {
 pub struct RecvError;
 
 pub fn queue<S, R, T>(capacity: usize) -> (Sender<S, R, T>, Receiver<S, R, T>) where
-    S: Sequence, R: Sequence, T: Send
+    S: Sequence, R: Sequence
 {
     let head = Head::new(S::default(), R::default());
 
@@ -56,7 +56,7 @@ pub fn queue<S, R, T>(capacity: usize) -> (Sender<S, R, T>, Receiver<S, R, T>) w
     (sender, receiver)
 }
 
-impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, T> {
+impl<S: Sequence, R: Sequence, T> Sender<S, R, T> {
     pub fn is_closed(&self) -> bool {
         self.half.as_ref().map_or(true, |half| half.is_closed())
     }
@@ -74,7 +74,7 @@ impl<S: Sequence, R: Sequence, T: Send> Sender<S, R, T> {
     }
 }
 
-impl<S: MultiCache, R: Sequence, T: Send> Clone for Sender<S, R, T> {
+impl<S: MultiCache, R: Sequence, T> Clone for Sender<S, R, T> {
     fn clone(&self) -> Self {
         Sender {
             half: self.half.as_ref().and_then(Half::try_clone),
@@ -82,7 +82,7 @@ impl<S: MultiCache, R: Sequence, T: Send> Clone for Sender<S, R, T> {
     }
 }
 
-impl<S: Sequence, R: Sequence, T: Send> Receiver<S, R, T> {
+impl<S: Sequence, R: Sequence, T> Receiver<S, R, T> {
     pub fn is_closed(&self) -> bool {
         self.half.as_ref().map_or(true, Half::is_closed)
     }
@@ -104,7 +104,7 @@ impl<S: Sequence, R: Sequence, T: Send> Receiver<S, R, T> {
     }
 }
 
-impl<S: Sequence, R: MultiCache, T: Send> Clone for Receiver<S, R, T> {
+impl<S: Sequence, R: MultiCache, T> Clone for Receiver<S, R, T> {
     fn clone(&self) -> Self {
         Receiver {
             half: self.half.as_ref().and_then(Half::try_clone)
