@@ -7,7 +7,7 @@ use rand::{Rng, thread_rng};
 use sequence::owned::Owned;
 use sequence::shared::Shared;
 
-use queue;
+use queue::bounded;
 
 #[cfg(not(feature = "ci"))]
 const COUNT: usize = 640;
@@ -25,7 +25,7 @@ const THREADS: usize = 4;
 
 #[test]
 fn test_spinning_spsc() {
-    let (mut tx, mut rx) = queue::create::<Owned, Owned, usize>(SIZE);
+    let (mut tx, mut rx) = bounded::queue::<Owned, Owned, usize>(SIZE);
 
     let handle = thread::spawn(move|| {
         for i in 0..COUNT {
@@ -55,7 +55,7 @@ fn test_spinning_spsc() {
 #[test]
 #[cfg_attr(feature = "ci", ignore)]
 fn test_spinning_mpmc() {
-    let (tx, rx) = super::create::<Shared, Shared, u64>(SIZE);
+    let (tx, rx) = bounded::queue::<Shared, Shared, u64>(SIZE);
 
     let senders: Vec<_> = (0..THREADS)
         .map(|_| {
@@ -71,8 +71,8 @@ fn test_spinning_mpmc() {
                     loop {
                         match tx.try_send(num) {
                             Ok(()) => break,
-                            Err(queue::SendError::Closed(_)) => panic!("Boo, never!"),
-                            Err(queue::SendError::BufferFull(_)) => {}
+                            Err(bounded::SendError::Closed(_)) => panic!("Boo, never!"),
+                            Err(bounded::SendError::BufferFull(_)) => {}
                         }
                         if let Ok(()) = tx.try_send(num) {
                             break;
@@ -135,7 +135,7 @@ fn test_drop_unsent() {
     let sent = 77;
     let received = 18;
 
-    let (mut tx, mut rx) = queue::create::<Owned, Owned, LoudDrop>(128);
+    let (mut tx, mut rx) = bounded::queue::<Owned, Owned, LoudDrop>(128);
 
     for _ in 0..sent {
         tx.try_send(LoudDrop(0)).unwrap();
