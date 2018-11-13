@@ -1,12 +1,9 @@
 
-mod head;
-mod half;
-
 use sequence::{Sequence, MultiCache};
 use buffer::Buffer;
 
-use self::half::{Half, AdvanceError};
-use self::head::{Head, SenderHead, SenderHalf, ReceiverHead, ReceiverHalf};
+use queue::half::{Half, AdvanceError};
+use queue::head::{Head, SenderHead, SenderHalf, ReceiverHead, ReceiverHalf};
 
 #[derive(Debug)]
 pub struct Sender<S: Sequence, R: Sequence, T> {

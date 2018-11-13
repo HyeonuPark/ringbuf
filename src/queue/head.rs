@@ -8,7 +8,7 @@ use counter::{Counter, CounterRange, AtomicCounter};
 use sequence::{Sequence, Limit};
 use buffer::BufRange;
 
-use super::half::{Half, HeadHalf};
+use queue::half::{Half, HeadHalf};
 
 #[derive(Debug)]
 pub(crate) struct Head<S: Sequence, R: Sequence> {
