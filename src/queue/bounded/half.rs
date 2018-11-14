@@ -95,7 +95,7 @@ impl<B, H, T> Half<B, H, T> where
         self.closed_cache.set(true);
         self.head.close_counter().close();
     }
-    
+
     pub fn try_advance(&mut self, input: Input<H>) -> Result<Output<H>, AdvanceError<Input<H>>> {
         if self.closed_cache.get() {
             return Err(AdvanceError::Closed(input));
