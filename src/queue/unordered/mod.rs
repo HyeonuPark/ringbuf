@@ -37,8 +37,36 @@ struct Msg<T> {
 }
 
 impl<T: Notify> List<T> {
-    fn push(&mut self, value: Msg<T>) {
-        self.list.push_back(value)
+    fn new(inbox: Arc<AtomicCell<Self>>) -> Self {
+        let mut list = LinkedList::new();
+        list.push_front(Msg {
+            value: None,
+            inbox,
+        });
+
+        List {
+            kind: None,
+            list,
+        }
+    }
+
+    fn empty() -> Self {
+        List {
+            kind: None,
+            list: LinkedList::new(),
+        }
+    }
+
+    /// Assume this list has single node with `None` value, and init.
+    fn init(&mut self, kind: Kind, value: T) {
+        debug_assert!(self.kind.is_none());
+        debug_assert!(self.list.len() == 1);
+
+        let msg = self.list.front_mut().unwrap();
+        debug_assert!(msg.value.is_none());
+
+        self.kind = Some(kind);
+        msg.value = Some(value);
     }
 
     fn len(&self) -> usize {
@@ -49,6 +77,10 @@ impl<T: Notify> List<T> {
         self.list.is_empty()
     }
 
+    fn append(&mut self, other: &mut Self) {
+        self.list.append(&mut other.list);
+    }
+
     fn pop_list(&mut self) -> Option<Self> {
         if self.is_empty() {
             return None
@@ -57,11 +89,12 @@ impl<T: Notify> List<T> {
         let tail = self.list.split_off(1);
 
         Some(List {
-            kind: self.kind,
+            kind: None,
             list: mem::replace(&mut self.list, tail),
         })
     }
 
+    /// de-initialize all nodes and gives them back to their inbox
     fn notify_all(&mut self, pocket: &mut Box<Self>) {
         while let Some(mut list) = self.pop_list() {
             let inbox = {
@@ -80,41 +113,30 @@ impl<T: Notify> List<T> {
 
 impl<T: Notify> Queue<T> {
     pub fn new() -> Self {
-        let mut queue = Queue {
-            remote: Arc::default(),
-            local: List::default(),
-            pocket: Box::default(),
-            inbox: Arc::default(),
-        };
+        let inbox = Arc::new(AtomicCell::new(List::empty().into()));
 
-        queue.local.push(Msg {
-            value: None,
-            inbox: queue.inbox.clone(),
-        });
-
-        queue
+        Queue {
+            remote: Arc::new(AtomicCell::new(List::empty().into())),
+            local: List::new(inbox.clone()),
+            pocket: List::empty().into(),
+            inbox,
+        }
     }
 
-    pub fn wait_or_notify(&mut self, value: T, kind: Kind) {
-        debug_assert!(self.local.list.len() == 1);
+    pub fn wait_or_notify(&mut self, kind: Kind, value: T) {
         debug_assert!(self.pocket.is_empty());
 
-        {
-            self.local.kind = Some(kind);
-            let node = self.local.list.front_mut().unwrap();
-            debug_assert!(node.value.is_none());
-            debug_assert!(Arc::ptr_eq(&node.inbox, &self.inbox));
-            node.value = Some(value);
-        }
+        self.local.init(kind, value);
 
+        // fetch remote to pocket
         self.remote.swap(&mut self.pocket);
 
         loop {
-            let mut to_notify = <(List<T>, List<T>)>::default();
+            let mut to_notify = List::empty();
 
             // merge `self.local` to `self.pocket`
             match (self.local.kind, self.pocket.kind) {
-                // contain different kind
+                // contains different kind
                 (Some(Kind::Send), Some(Kind::Receive)) |
                 (Some(Kind::Receive), Some(Kind::Send)) => {
                     // now self.local cannot be longer than self.pocket
@@ -126,10 +148,10 @@ impl<T: Notify> Queue<T> {
                         kind: self.pocket.kind,
                         list: self.pocket.list.split_off(self.local.len()),
                     };
-                    let mut pocket = mem::replace(&mut *self.pocket, remain);
+                    let mut remote = mem::replace(&mut *self.pocket, remain);
 
-                    mem::swap(&mut to_notify.0, &mut self.local);
-                    to_notify.1 = pocket;
+                    to_notify.append(&mut self.local);
+                    to_notify.append(&mut remote);
                 }
                 // both contain same kind or either one is empty
                 _ => {
@@ -137,15 +159,16 @@ impl<T: Notify> Queue<T> {
                         self.pocket.kind = self.local.kind;
                     }
 
-                    self.pocket.list.append(&mut self.local.list);
+                    self.pocket.append(&mut self.local);
                 }
             }
 
+            // push to remote
             self.remote.swap(&mut self.pocket);
 
-            to_notify.0.notify_all(&mut self.pocket);
-            to_notify.1.notify_all(&mut self.pocket);
+            to_notify.notify_all(&mut self.pocket);
 
+            // is remote changed since last fetch?
             if self.pocket.is_empty() {
                 return
             }
@@ -161,20 +184,13 @@ impl<T: Notify> Default for Queue<T> {
 
 impl<T: Notify> Clone for Queue<T> {
     fn clone(&self) -> Self {
+        let inbox = Arc::new(AtomicCell::new(List::empty().into()));
+
         Queue {
             remote: self.remote.clone(),
-            local: List::default(),
-            pocket: Box::default(),
-            inbox: Arc::default(),
-        }
-    }
-}
-
-impl<T> Default for List<T> {
-    fn default() -> Self {
-        List {
-            kind: None,
-            list: Default::default(),
+            local: List::new(inbox.clone()),
+            pocket: List::empty().into(),
+            inbox,
         }
     }
 }
